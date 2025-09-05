@@ -9,6 +9,10 @@
   "engines": {
     "vscode": "^1.103.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cainhooow/rustautomod"
+  },
   "categories": [
     "Other"
   ],
