@@ -1,0 +1,65 @@
+{
+  "name": "rustautomod",
+  "displayName": "Rust AutoMod",
+  "icon": "assets/rustautomod.png",
+  "description": "Automod is an extension made to help in generating mod.rs by creating an other_name.rs file in a context",
+  "version": "0.0.1",
+  "author": "Cainhooow - Caio Augusto",
+  "publisher": "drkryz",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:rust",
+    "onFileSystem:*.rs"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [],
+    "configuration": {
+      "title": "Rust Automod",
+      "properties": {
+        "rustautomod.visibility": {
+          "type": "string",
+          "enum": [
+            "pub",
+            "private"
+          ],
+          "default": "pub",
+          "description": "Define rust modules create with public(pub mod) or private(mod)"
+        },
+        "rustautomod.sort": {
+          "type": "string",
+          "enum": [
+            "alpha",
+            "none"
+          ],
+          "default": "alpha",
+          "description": "Define rust module organization"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "yarn run compile && yarn run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.103.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "eslint": "^9.34.0",
+    "typescript": "^5.9.2",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
