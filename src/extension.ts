@@ -2,8 +2,8 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { handleFileDelete, handleNewFile } from './automod';
-import { validateRautomod } from './automodconfig';
-import { completionProvider } from './autocompletion';
+import { validateRautomod } from './config/config.automod';
+import { completionProvider } from './config/config.completion';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed

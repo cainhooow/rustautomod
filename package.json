@@ -3,7 +3,7 @@
   "displayName": "Rust AutoMod",
   "icon": "assets/rustautomod.png",
   "description": "Automod is an extension made to help in generating mod.rs by creating an other_name.rs file in a context",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "author": "Cainhooow - Caio Augusto",
   "publisher": "drkryz",
   "engines": {
