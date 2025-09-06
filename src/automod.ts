@@ -44,17 +44,34 @@ function getModDeclaration(name: string, filePath: string): string {
 
 function addModLine(content: string, newLine: string, filePath: string): string {
     const config = getProjectConfig(filePath);
-    const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
+    const lines = content.split(/\r?\n/);
 
-    if (!lines.includes(newLine)) {
-        lines.push(newLine);
+    if (lines.includes(newLine)) {
+        return content;
     }
 
-    if (config.sort == "alpha") {
-        lines.sort();
+    let insertIndex = 0;
+    while (
+        insertIndex < lines.length &&
+        (lines[insertIndex].trim().startsWith("//") ||
+            lines[insertIndex].trim().startsWith("/*") ||
+            lines[insertIndex].trim().startsWith("#!") ||
+            lines[insertIndex].trim().startsWith("//!") ||
+            lines[insertIndex].trim() === "")
+    ) {
+        insertIndex++;
     }
 
-    return lines.sort().join("\n") + "\n";
+    lines.splice(insertIndex, 0, newLine);
+
+    if (config.sort === "alpha") {
+        const beforeDecl = lines.slice(0, insertIndex + 1).filter(l => l.trim() !== "");
+        const afterDecl = lines.slice(insertIndex + 1);
+        beforeDecl.sort();
+        return [...beforeDecl, ...afterDecl].join("\n") + "\n";
+    }
+
+    return lines.join("\n") + "\n";
 }
 
 export async function handleNewFile(uri: vscode.Uri) {
@@ -67,17 +84,17 @@ export async function handleNewFile(uri: vscode.Uri) {
     const libRsPath = path.join(folderPath, "lib.rs");
     const mainRsPath = path.join(folderPath, "main.rs");
 
-    let rootFilePath: string | null = null;
-    if (fs.existsSync(libRsPath)) rootFilePath = libRsPath;
-    else if (fs.existsSync(mainRsPath)) rootFilePath = mainRsPath;
+    if (fs.existsSync(libRsPath) || fs.existsSync(mainRsPath)) {
+        const rootFilePath = fs.existsSync(libRsPath) ? libRsPath : mainRsPath;
 
-    if (rootFilePath) {
-        const newModLine = getModDeclaration(fileName, filePath) + "\n";
+        const newModLine = getModDeclaration(fileName, filePath);
         let content = fs.readFileSync(rootFilePath, "utf-8");
-        if (!content.includes(newModLine)) {
+
+        if (!content.split(/\r?\n/).includes(newModLine)) {
             content = addModLine(content, newModLine, filePath);
             fs.writeFileSync(rootFilePath, content);
         }
+
         return;
     }
 
