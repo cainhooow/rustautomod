@@ -103,7 +103,7 @@ export async function handleNewFile(uri: vscode.Uri) {
         fs.writeFileSync(modFilePath, getModDeclaration(fileName, filePath) + "\n");
     } else {
         let content = fs.readFileSync(modFilePath, "utf-8");
-        const newMod = getModDeclaration(fileName, filePath) + "\n";
+        const newMod = getModDeclaration(fileName, filePath);
 
         if (!content.includes(newMod)) {
             content = addModLine(content, newMod, filePath);
