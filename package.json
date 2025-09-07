@@ -3,7 +3,7 @@
   "displayName": "Rust AutoMod",
   "icon": "assets/ramlogo.png",
   "description": "Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "author": "Cainhooow - Caio Augusto",
   "publisher": "drkryz",
   "engines": {
@@ -23,7 +23,13 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [],
+    "commands": [
+      {
+        "title": "Hidden/Show Rust Modules Files",
+        "command": "rustautomod.toggleHideModRs",
+        "shortTitle": "Hide/show rust mod.rs"
+      }
+    ],
     "configuration": {
       "title": "Rust Automod",
       "properties": {

@@ -1,9 +1,7 @@
 # Change Log
 
-All notable changes to the "rustautomod" extension will be documented in this file.
+## [released]
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+### 1.0.8
 
-## [Unreleased]
-
-- Initial release
+- **Hide/Show mod.rs files**: Quickly toggle the visibility of all mod.rs files via the Command Palette (`Hidden/Show Rust Modules Files`)
