@@ -21,6 +21,11 @@ export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection:
             if (!/^sort\s*=\s*(alpha|none)$/.test(trimmed)) {
                 diagnostics.push(createDiagnostic(index, "sort accepts only 'alpha' or 'none'"));
             }
+        } else if (/^pattern\s*=/.test(trimmed)) {
+            const values = trimmed.split("=")[1].split(",").map(s => s.trim());
+            if (values.some(v => v === "")) {
+                diagnostics.push(createDiagnostic(index, "pattern values cannot be empty"));
+            }
         } else {
             diagnostics.push(createDiagnostic(index, "invalid line in .rautomod"));
         }

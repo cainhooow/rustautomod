@@ -13,9 +13,16 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 item.detail = "Set module visibility (pub/private)";
                 completions.push(item);
             }
+
             if ("sort".startsWith(linePrefix.trim())) {
                 const item = new vscode.CompletionItem("sort", vscode.CompletionItemKind.Keyword);
                 item.detail = "Set sorting order for mod.rs (alpha/none)";
+                completions.push(item);
+            }
+
+            if ("pattern".startsWith(linePrefix.trim())) {
+                const item = new vscode.CompletionItem("pattern", vscode.CompletionItemKind.Keyword);
+                item.detail = "Create a mod files section (comma-separated)";
                 completions.push(item);
             }
 
@@ -27,6 +34,11 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             if (/^sort\s*=/.test(linePrefix)) {
                 completions.push(new vscode.CompletionItem("alpha", vscode.CompletionItemKind.Value));
                 completions.push(new vscode.CompletionItem("none", vscode.CompletionItemKind.Value));
+            }
+
+            if (/^pattern\s*=/.test(linePrefix)) {
+                completions.push(new vscode.CompletionItem("my_module", vscode.CompletionItemKind.Value));
+                completions.push(new vscode.CompletionItem("utils,helpers,crate", vscode.CompletionItemKind.Value));
             }
 
             return completions;

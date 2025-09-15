@@ -2,8 +2,8 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { handleFileDelete, handleNewFile } from './automod';
-import { validateRautomod } from './config/config.automod';
-import { completionProvider } from './config/config.completion';
+import { validateRautomod } from './linting/linting.automod';
+import { completionProvider } from './linting/linting.completion';
 import { hiddenModFiles } from './workbench/control';
 
 // This method is called when your extension is activated

@@ -2,28 +2,74 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
-interface AutoModConfig {
+interface AutomodRule {
     visibility: "pub" | "private";
     sort: "alpha" | "none";
+    pattern?: string[];
 }
-function getProjectConfig(filePath: string): AutoModConfig {
+
+function parseRautomod(content: string): AutomodRule[] {
+    const blocks = content
+        .split(/\n\s*\n/)
+        .map(b => b.trim())
+        .filter(Boolean);
+
+    return blocks.map(block => {
+        const rule: AutomodRule = { visibility: "pub", sort: "none" };
+        const lines = block.split("\n");
+
+        for (const line of lines) {
+            if (line.startsWith("#")) continue;
+
+            const [key, rawValue] = line.split("=").map(s => s.trim());
+            if (!key || rawValue === undefined) continue;
+
+            switch (key) {
+                case "visibility":
+                    if (rawValue === "pub" || rawValue === "private") {
+                        rule.visibility = rawValue;
+                    }
+                    break;
+                case "sort":
+                    if (rawValue === "alpha" || rawValue === "none") {
+                        rule.sort = rawValue;
+                    }
+                    break;
+                case "pattern":
+                    rule.pattern = rawValue.split(",").map(s => s.trim()).filter(Boolean);
+                    break;
+            }
+        }
+
+        return rule;
+    })
+}
+
+function findCfgForFile(rules: AutomodRule[], filePath: string): AutomodRule | null {
+    const fileName = path.basename(filePath);
+
+    for (const rule of rules) {
+        if (!rule.pattern) continue;
+
+        for (const p of rule.pattern) {
+            if (filePath.includes(p) || fileName === p) {
+                return rule;
+            }
+        }
+    }
+
+    return rules.find(r => !r.pattern) || null;
+}
+
+function getProjectConfig(filePath: string): AutomodRule {
     let dir = path.dirname(filePath);
     while (dir !== path.dirname(dir)) {
         const configFile = path.join(dir, ".rautomod");
         if (fs.existsSync(configFile)) {
             const content = fs.readFileSync(configFile, "utf-8");
-            const config: AutoModConfig = {
-                visibility: "pub",
-                sort: "none"
-            };
-
-            const visibilityMatch = content.match(/visibility\s*=\s*(pub|private)/);
-            if (visibilityMatch) config.visibility = visibilityMatch[1] as "pub" | "private";
-
-            const sortMatch = content.match(/sort\s*=\s*(alpha|none)/);
-            if (sortMatch) config.sort = sortMatch[1] as "alpha" | "none";
-
-            return config;
+            const rules = parseRautomod(content);
+            const rule = findCfgForFile(rules, filePath);
+            if (rule) return rule;
         }
         dir = path.dirname(dir);
     }
