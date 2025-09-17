@@ -2,6 +2,12 @@
 
 ## [released]
 
+### 1.1.2
+- Fix issue when a mod.rs related file was deleted, all spaces in mod.rs were removed
+- Also fixed when when changing branches, blank lines were deleted, the same problem as question 1;
+
+**Any contribution for new improvements and features will be welcome.**
+
 ### 1.1.0
 
 - `.rautomod` now supports the pattern option to apply visibility and sorting rules only to specific files or folders.
