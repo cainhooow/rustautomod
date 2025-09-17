@@ -96,6 +96,15 @@ function addModLine(content: string, newLine: string, filePath: string): string 
         return content;
     }
 
+    const modLines = lines.filter(l => l.trim().startsWith('mod') || l.trim().startsWith('pub mod'));
+    const otherLines = lines.filter(l => !(l.trim().startsWith('mod') || l.trim().startsWith('pub mod')));
+
+    modLines.push(newLine);
+
+    if (config.sort === "alpha") {
+        modLines.sort();
+    }
+
     let insertIndex = 0;
     while (
         insertIndex < lines.length &&
@@ -111,10 +120,22 @@ function addModLine(content: string, newLine: string, filePath: string): string 
     lines.splice(insertIndex, 0, newLine);
 
     if (config.sort === "alpha") {
-        const beforeDecl = lines.slice(0, insertIndex + 1).filter(l => l.trim() !== "");
-        const afterDecl = lines.slice(insertIndex + 1);
-        beforeDecl.sort();
-        return [...beforeDecl, ...afterDecl].join("\n") + "\n";
+        const modLinesToResort = [];
+        let startIndex = -1;
+        let endIndex = -1;
+
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(' mod ')) {
+                if (startIndex === -1) startIndex = i;
+                endIndex = i;
+                modLinesToResort.push(lines[i]);
+            }
+        }
+
+        if (startIndex !== -1) {
+            modLinesToResort.sort();
+            lines.splice(startIndex, modLinesToResort.length, ...modLinesToResort);
+        }
     }
 
     return lines.join("\n") + "\n";
@@ -181,35 +202,24 @@ export async function handleFileDelete(uri: vscode.Uri) {
 
     const libRsPath = path.join(folderPath, "lib.rs");
     const mainRsPath = path.join(folderPath, "main.rs");
-
-    let rootFilePath: string | null = null;
-    if (fs.existsSync(libRsPath)) rootFilePath = libRsPath;
-    else if (fs.existsSync(mainRsPath)) rootFilePath = mainRsPath;
-
-    if (rootFilePath) {
-        const lineToRemove = getModDeclaration(fileName, filePath);
-        let content = fs.readFileSync(rootFilePath, "utf-8");
-        const newContent = content
-            .split(/\r?\n/)
-            .filter(line => line.trim() !== "" && line.trim() !== lineToRemove)
-            .join("\n");
-        fs.writeFileSync(rootFilePath, newContent + (newContent.trim() ? "\n" : ""));
-        return;
-    }
-
     const modFilePath = path.join(folderPath, "mod.rs");
-    if (!fs.existsSync(modFilePath)) return;
+
+    let targetFilePath = null;
+    if (fs.existsSync(libRsPath)) targetFilePath = libRsPath;
+    else if (fs.existsSync(mainRsPath)) targetFilePath = mainRsPath;
+    else if (fs.existsSync(modFilePath)) targetFilePath = modFilePath;
+
+    if (!targetFilePath) return;
 
     const lineToRemove = getModDeclaration(fileName, filePath);
-    let content = fs.readFileSync(modFilePath, "utf-8");
-    const newContent = content
-        .split(/\r?\n/)
-        .filter(line => line.trim() !== "" && line.trim() !== lineToRemove)
-        .join("\n");
+    let content = fs.readFileSync(targetFilePath, "utf-8");
+    const lines = content.split(/\r?\n/);
 
-    if (newContent.trim() === "") {
-        fs.unlinkSync(modFilePath);
-    } else {
-        fs.writeFileSync(modFilePath, newContent + "\n");
+    const indexToRemove = lines.findIndex(line => line.trim() === lineToRemove);
+
+    if (indexToRemove !== -1) {
+        lines.splice(indexToRemove, 1);
+        const newContent = lines.join("\n");
+        fs.writeFileSync(targetFilePath, newContent + (newContent.trim() ? "\n" : ""));
     }
 }
