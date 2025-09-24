@@ -26,6 +26,15 @@ export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection:
             if (values.some(v => v === "")) {
                 diagnostics.push(createDiagnostic(index, "pattern values cannot be empty"));
             }
+        } else if (/^cfg\s*=/.test(trimmed)) {
+            const values = trimmed.split("=")[1].split(",").map(s => s.trim());
+            if (values.some(v => v === "")) {
+                diagnostics.push(createDiagnostic(index, "cfg values cannot be empty"));
+            }
+        } else if (/^fmt\s*=/.test(trimmed)) {
+            if (!/^fmt\s*=\s*(enabled|disabled)$/.test(trimmed)) {
+                diagnostics.push(createDiagnostic(index, "fmt accepts only 'enabled' or 'disabled'"));
+            }
         } else {
             diagnostics.push(createDiagnostic(index, "invalid line in .rautomod"));
         }

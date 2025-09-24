@@ -1,8 +1,6 @@
 # Rust Automod
 
-Rust Automod is a Visual Studio Code extension that automates the management of `mod.rs` files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.
-
-![automodtour](assets/automodtour.gif)
+Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.
 
 ## 🚀 What It Solves
 
@@ -20,11 +18,9 @@ Rust Automod is a Visual Studio Code extension that automates the management of 
 
 - Supporting project-specific configuration through a `.rautomod` file.
 
-- **NEW: Toggle mod.rs visibility** → Hide or show all `mod.rs` files in the VSCode Explorer with a single command, keeping your workspace cleaner.
+- NEW: Toggle mod.rs visibility → Hide or show all `mod.rs` files in the VSCode Explorer with a single command, keeping your workspace cleaner.
 
-## 📁 .rautomod Configuration
-
-![automodconfig](assets/automodconftour.gif)
+## 📁 `.rautomod` Configuration
 
 You can place a `.rautomod` file in the root of your Rust project (or any folder) to customize Automod behavior. The available configuration options are:
 
@@ -35,10 +31,17 @@ visibility=pub
 # 'alpha' to sort module declarations alphabetically, 'none' to preserve insertion order
 sort=alpha          
 
+# 'enabled' to automatically run 'cargo fmt' after a change
+fmt=enabled
+
+# Comma-separated list of conditional compilation flags
+cfg=feature="my_feature",unix
+
+# Comma-separated list of file/folder names to apply this rule to
 pattern=crate,private,another......
 ```
 
-### Basic Usage
+## Basic Usage
 
 ```.rautomod
 visibility=pub
@@ -46,44 +49,73 @@ sort=alpha
 ```
 
 - Creates all module declarations as `pub mod`.
+
 - Sorts modules alphabetically in `mod.rs`.
 
-## Advanced Usage with Patterns
+## Advanced Usage with Patterns and Formatting
 
 ```.rautomod
-# Make utils and helpers private and unsorted
+# Make utils and helpers private, unsorted, and don't format them automatically
 visibility=private
 sort=none
+fmt=disabled
 pattern=utils,helpers
 
-# Make all other modules public and sorted
+# Make all other modules public, sorted, and run 'cargo fmt' after changes
 visibility=pub
 sort=alpha
+fmt=enabled
 ```
 
 - The first block applies only to files/folders named `utils` or `helpers`.
+
 - The second block (without `pattern`) is a fallback rule for all other files.
+
 - Patterns support **comma-separated** lists and can match file or folder names.
 
-This configuration will create all module declarations as pub mod and sort them alphabetically in mod.rs files.
+## Advanced Configuration: Conditional Compilation (cfg)
+
+For projects that require conditional compilation, you can use the `cfg` key. It accepts a comma-separated list of conditions. Automod will generate a `mod` declaration for each condition.
+
+**Example** `.rautomod`:
+
+```.rautomod
+# This rule applies only to files/folders named 'advanced_mod'
+visibility=pub
+cfg=feature="serde_support", all(unix, target_pointer_width = "64")
+pattern=advanced_mod
+```
+
+When you create a file named `advanced_mod.rs`, the extension will generate the following in `mod.rs`:
+
+```rs
+#[cfg(feature="serde_support")]
+pub mod advanced_mod;
+#[cfg(all(unix, target_pointer_width = "64"))]
+pub mod advanced_mod;
+```
 
 ## ⚡ Features
 
-- Automatic `mod.rs` creation: No need to manually create `mod.rs` when adding a new Rust file.
+- **Automatic** `mod.rs` **creation**: No need to manually create `mod.rs` when adding a new Rust file.
 
-- Automatic module registration: Updates parent `mod.rs` and child folders automatically.
+- **Automatic module registration**: Updates parent `mod.rs` and child folders automatically.
 
-- Deletion support: Removes module declarations when files are deleted.
+- **Deletion support**: Removes module declarations when files are deleted.
 
-- Project-specific configuration: `.rautomod` allows different settings per project.
+- **Project-specific configuration**: `.rautomod` allows different settings per project.
 
-- Optional sorting: Alphabetical ordering of module declarations.
+- **Optional sorting**: Alphabetical ordering of module declarations.
 
-- IntelliSense support: Autocomplete for `.rautomod` keys (`visibility`, `sort`, `pattern`) and values (`pub`, `private`, `alpha`, `none`).
+- **NEW: Conditional Compilation Support**: Automatically add `#[cfg(...)]` attributes to new modules via `.rautomod.`
 
-- Linting: `.rautomod` is validated with inline errors in VSCode.
+- **NEW: Automatic Formatting**: Optionally run `cargo fmt` after every change to keep code consistent.
 
-- Hide/Show mod.rs files: Quickly toggle the visibility of all `mod.rs` files via the Command Palette (`Hidden/Show Rust Modules Files`).
+- **IntelliSense support**: Autocomplete for `.rautomod` keys (`visibility`, `sort`, `pattern`, `cfg`, `fmt`) and values (`pub`, `private`, `alpha`, `none`, `enabled`, `disabled`).
+
+- **Linting**: `.rautomod` is validated with inline errors in VSCode.
+
+- **Hide/Show** `mod.rs` **files**: Quickly toggle the visibility of all mod.rs files via the Command Palette (Hidden/Show Rust Modules Files).
 
 ## 🛠 Installation
 
@@ -100,19 +132,23 @@ This configuration will create all module declarations as pub mod and sort them 
 2. Optionally, add a `.rautomod` file at the root with your desired settings.
 
 3. Create a new Rust file inside any folder:
-   - Automod will create or update `mod.rs`.
-   - The new module will be added automatically.
+    - Automod will create or update `mod.rs`.
+    - The new module will be added automatically.
 
 4. Delete a Rust file:
-   - Automod will remove the module declaration from `mod.rs`.
+    - Automod will remove the module declaration from `mod.rs`.
 
 5. Use autocomplete and linting when editing `.rautomod` to ensure correct configuration.
 
-## 💡 Notes
+# 💡 Notes
 
-- If no `.rautomod` file is found, Automod will fallback to the global VSCode settings (`rustautomod.visibility` and `rustautomod.sort`), defaulting to pub and none.
+- **Formatting Prerequisite**: For `fmt=enabled` to work, `rustfmt` must be installed (`rustup component add rustfmt`) and the `cargo` command must be available in your system's PATH.
+
+- If no `.rautomod` file is found, Automod will fallback to the global VSCode settings (`rustautomod.visibility`, `rustautomod.sort`, and `rustautomod.fmt`), defaulting to pub, none, and disabled.
+
 - Nested folders are supported; Automod will create `mod.rs` files recursively as needed.
-- `pattern` rules allow per-folder or per-file customization for visibility and sorting.
+
+- `pattern` rules allow per-folder or per-file customization for all settings.
 
 ## 🤝 Contribution
 

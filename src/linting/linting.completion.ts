@@ -26,6 +26,19 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 completions.push(item);
             }
 
+            if ("fmt".startsWith(linePrefix.trim())) {
+                const item = new vscode.CompletionItem("cfg", vscode.CompletionItemKind.Keyword);
+                item.detail = "Define whether you want formatting with cargo fmt after deleting/creating mod.rs";
+                completions.push(item);
+            }
+
+            if ("cfg".startsWith(linePrefix.trim())) {
+                const item = new vscode.CompletionItem("cfg", vscode.CompletionItemKind.Keyword);
+                item.detail = "Define a conditional compilation (comma-separated)";
+                completions.push(item);
+            }
+
+
             if (/^visibility\s*=/.test(linePrefix)) {
                 completions.push(new vscode.CompletionItem("pub", vscode.CompletionItemKind.Value));
                 completions.push(new vscode.CompletionItem("private", vscode.CompletionItemKind.Value));
@@ -39,6 +52,11 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             if (/^pattern\s*=/.test(linePrefix)) {
                 completions.push(new vscode.CompletionItem("my_module", vscode.CompletionItemKind.Value));
                 completions.push(new vscode.CompletionItem("utils,helpers,crate", vscode.CompletionItemKind.Value));
+            }
+
+            if (/^cfg\s*=/.test(linePrefix)) {
+                completions.push(new vscode.CompletionItem("windows,unix", vscode.CompletionItemKind.Value));
+                completions.push(new vscode.CompletionItem("feature=\"serde_support\",all(unix, target_point_width = \"64\")"))
             }
 
             return completions;
