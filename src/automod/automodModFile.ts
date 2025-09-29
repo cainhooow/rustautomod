@@ -285,10 +285,16 @@ export async function handleFileDelete(uri: vscode.Uri) {
     const folderPath = path.dirname(filePath);
     const fileName = path.basename(filePath, ".rs");
 
-    if (fileName === "mod" || fileName === "lib" || fileName === "main") return;
+    const fileNameMatch: Record<string, boolean> = {
+        mod: fileName === "mod",
+        lib: fileName === "lib",
+        main: fileName === "main",
+        build: fileName === "build"
+    };
+
+    if (fileNameMatch[fileName]) return;
 
     const config = getProjectConfig(filePath);
-
     const libRsPath = path.join(folderPath, "lib.rs");
     const mainRsPath = path.join(folderPath, "main.rs");
     const modFilePath = path.join(folderPath, "mod.rs");
