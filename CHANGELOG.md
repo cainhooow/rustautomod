@@ -2,6 +2,9 @@
 
 ## [released]
 
+### 1.1.5 
+Fix for build.rs files
+
 ### 1.1.3 - 1.1.4
 This version introduces powerful new features for handling complex Rust projects and fixes major bugs related to module sorting and the handling of conditionally compiled modules.
 
