@@ -52,8 +52,9 @@ function parseModDeclarations(lines: string[]): ModDeclaration[] {
 
     for (let i = 0; i < lines.length; i++) {
         const trimmed = lines[i].trim();
+        const instructionOnly = trimmed.split("//")[0].trim();
 
-        if (trimmed.startsWith('mod ') || trimmed.startsWith('pub mod ')) {
+        if ((instructionOnly.startsWith('mod ') || instructionOnly.startsWith('pub mod ')) && instructionOnly.endsWith(';')) {
             const attributes: string[] = [];
             const fullBlock: string[] = [];
             let startIndex = i;

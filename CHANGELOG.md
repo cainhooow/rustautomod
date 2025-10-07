@@ -2,6 +2,9 @@
 
 ## [released]
 
+### 1.1.7 
+Fix: The extension is treating an internal module (with body {...}) as if it were an external module declaration (which points to a file), causing it to be moved incorrectly by the sort function.
+
 ### 1.1.5 
 Fix for build.rs files
 
