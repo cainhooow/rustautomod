@@ -2,6 +2,13 @@
 
 ## [released]
 
+### 1.1.9
+Critical: Fixed extension modifying mod.rs files during git operations (rebases, branch switches, merges)
+
+Previously, rapid file changes during git operations would trigger immediate processing for each file
+This caused race conditions and unwanted modifications while git was still working
+Issue reported by users experiencing corrupted module declarations after git operations
+
 ### 1.1.7 
 Fix: The extension is treating an internal module (with body {...}) as if it were an external module declaration (which points to a file), causing it to be moved incorrectly by the sort function.
 
