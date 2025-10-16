@@ -360,6 +360,68 @@ export async function handleNewFile(uri: vscode.Uri) {
 }
 
 /**
+ * Handles the logic for when a Rust file is renamed.
+ * This function waits for Rust Analyzer to update the module declaration,
+ * then optionally sorts the declarations alphabetically if configured.
+ * @param {vscode.Uri} oldUri - The URI of the old file path.
+ * @param {vscode.Uri} newUri - The URI of the new file path.
+ */
+export async function handleFileRename(oldUri: vscode.Uri, newUri: vscode.Uri) {
+    const oldFilePath = oldUri.fsPath;
+    const newFilePath = newUri.fsPath;
+    const oldFileName = path.basename(oldFilePath, ".rs");
+    const newFileName = path.basename(newFilePath, ".rs");
+    const folderPath = path.dirname(newFilePath);
+
+    // Ignore special Rust files
+    const fileNameMatch: Record<string, boolean> = {
+        mod: oldFileName === "mod" || newFileName === "mod",
+        lib: oldFileName === "lib" || newFileName === "lib",
+        main: oldFileName === "main" || newFileName === "main",
+        build: oldFileName === "build" || newFileName === "build"
+    };
+
+    if (fileNameMatch[oldFileName] || fileNameMatch[newFileName]) return;
+
+    const config = getProjectConfig(newFilePath);
+
+    // Find the mod file (lib.rs, main.rs, or mod.rs)
+    const libRsPath = path.join(folderPath, "lib.rs");
+    const mainRsPath = path.join(folderPath, "main.rs");
+    const modFilePath = path.join(folderPath, "mod.rs");
+
+    let targetFilePath = null;
+    if (fs.existsSync(libRsPath)) targetFilePath = libRsPath;
+    else if (fs.existsSync(mainRsPath)) targetFilePath = mainRsPath;
+    else if (fs.existsSync(modFilePath)) targetFilePath = modFilePath;
+
+    if (!targetFilePath) return;
+
+    // Wait a bit for Rust Analyzer to finish its work
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Read the file after R.A. has done its work
+    let content = fs.readFileSync(targetFilePath, "utf-8");
+    const lines = content.split(/\r?\n/);
+
+    // Only sort if configured to do so
+    if (config.sort === "alpha") {
+        console.log(`RUST AUTOMOD: Sorting module declarations in ${targetFilePath} after rename`);
+        sortModDeclarations(lines);
+
+        const newContent = lines.join("\n");
+        const finalContent = content.endsWith("\n") ? newContent + "\n" : newContent;
+
+        if (finalContent !== content) {
+            fs.writeFileSync(targetFilePath, finalContent);
+            if (config.fmt === "enabled") {
+                await runCargoFmt(targetFilePath);
+            }
+        }
+    }
+}
+
+/**
  * Handles the logic for when a Rust file is deleted.
  * It removes the corresponding module declaration from `mod.rs`, `lib.rs`, or `main.rs`.
  * @param {vscode.Uri} uri - The URI of the deleted file.

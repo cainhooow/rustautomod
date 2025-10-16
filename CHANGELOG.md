@@ -2,6 +2,10 @@
 
 ## [released]
 
+### 1.2.0
+Feat: Better operation with rust analyzer
+Functionality for renaming files, operation queues, etc...
+
 ### 1.1.9
 Critical: Fixed extension modifying mod.rs files during git operations (rebases, branch switches, merges)
 
