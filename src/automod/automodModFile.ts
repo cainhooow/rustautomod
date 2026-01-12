@@ -4,6 +4,7 @@ import fs from "fs";
 import { getProjectConfig } from "./automodConfigFile";
 import { ModDeclaration } from "../interfaces/modeclaration";
 import { exec } from "child_process";
+import { isValidRustPath, findCargoRoot, getPathRejectionReason } from "../utils/pathValidator";
 
 /**
  * Finds the project root by searching for a `Cargo.toml` file, starting from a given path and moving upwards.
@@ -11,14 +12,7 @@ import { exec } from "child_process";
  * @returns {string | null} The path to the project root if found, otherwise null.
  */
 function findProjectRoot(startPath: string): string | null {
-    let currentPath = startPath;
-    while (currentPath !== path.dirname(currentPath)) {
-        if (fs.existsSync(path.join(currentPath, "Cargo.toml"))) {
-            return currentPath;
-        }
-        currentPath = path.dirname(currentPath);
-    }
-    return null;
+    return findCargoRoot(startPath);
 }
 
 /**
@@ -295,6 +289,14 @@ function sortModDeclarations(lines: string[]): void {
  */
 export async function handleNewFile(uri: vscode.Uri) {
     const filePath = uri.fsPath;
+    
+    // CRITICAL: Validate path before any operations
+    if (!isValidRustPath(filePath)) {
+        const reason = getPathRejectionReason(filePath);
+        console.log(`RUST AUTOMOD: Skipping file creation - ${reason}: ${filePath}`);
+        return;
+    }
+    
     const folderPath = path.dirname(filePath);
     const fileName = path.basename(filePath, ".rs");
 
@@ -369,6 +371,14 @@ export async function handleNewFile(uri: vscode.Uri) {
 export async function handleFileRename(oldUri: vscode.Uri, newUri: vscode.Uri) {
     const oldFilePath = oldUri.fsPath;
     const newFilePath = newUri.fsPath;
+    
+    // CRITICAL: Validate both paths before any operations
+    if (!isValidRustPath(newFilePath)) {
+        const reason = getPathRejectionReason(newFilePath);
+        console.log(`RUST AUTOMOD: Skipping file rename - ${reason}: ${newFilePath}`);
+        return;
+    }
+    
     const oldFileName = path.basename(oldFilePath, ".rs");
     const newFileName = path.basename(newFilePath, ".rs");
     const folderPath = path.dirname(newFilePath);
@@ -428,6 +438,14 @@ export async function handleFileRename(oldUri: vscode.Uri, newUri: vscode.Uri) {
  */
 export async function handleFileDelete(uri: vscode.Uri) {
     const filePath = uri.fsPath;
+    
+    // CRITICAL: Validate path before any operations
+    if (!isValidRustPath(filePath)) {
+        const reason = getPathRejectionReason(filePath);
+        console.log(`RUST AUTOMOD: Skipping file deletion - ${reason}: ${filePath}`);
+        return;
+    }
+    
     const folderPath = path.dirname(filePath);
     const fileName = path.basename(filePath, ".rs");
 

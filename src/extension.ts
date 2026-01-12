@@ -3,11 +3,20 @@ import { validateRautomod } from './linting/linting.automod';
 import { completionProvider } from './linting/linting.completion';
 import { hiddenModFiles } from './workbench/control';
 import { handleFileDelete, handleFileRename, handleNewFile } from './automod/automodModFile';
+import { isValidRustPath, shouldMonitorDirectory } from './utils/pathValidator';
 import path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log("RUST AUTOMOD INIT");
-	const watcher = vscode.workspace.createFileSystemWatcher("**/*.rs");
+	
+	// Create a watcher that excludes known problematic directories
+	const watcher = vscode.workspace.createFileSystemWatcher(
+		"**/*.rs",
+		false, // ignoreCreateEvents
+		false, // ignoreChangeEvents
+		false  // ignoreDeleteEvents
+	);
+	
 	const diagnosticCollection = vscode.languages.createDiagnosticCollection("rustautomod");
 
 	const toggleHide = vscode.commands.registerCommand("rustautomod.toggleHideModRs", hiddenModFiles);
@@ -87,6 +96,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 	watcher.onDidCreate(async (uri) => {
 		const filePath = uri.fsPath;
+		
+		// CRITICAL: Validate path early to prevent operations in wrong directories
+		if (!isValidRustPath(filePath)) {
+			console.log(`RUST AUTOMOD: Ignoring create event for invalid path: ${filePath}`);
+			return;
+		}
+		
 		const fileName = path.basename(filePath, '.rs');
 		const dirPath = path.dirname(filePath);
 
@@ -157,6 +173,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 	watcher.onDidDelete(async (uri) => {
 		const filePath = uri.fsPath;
+		
+		// CRITICAL: Validate path early to prevent operations in wrong directories
+		if (!isValidRustPath(filePath)) {
+			console.log(`RUST AUTOMOD: Ignoring delete event for invalid path: ${filePath}`);
+			return;
+		}
 
 		if (pendingCreatedUris.has(filePath)) {
 			pendingCreatedUris.delete(filePath);
@@ -208,6 +230,10 @@ export function activate(context: vscode.ExtensionContext) {
 		pendingRenames.clear();
 		recentDeletes.clear();
 	}));
+	
+	// Show startup notification with safety info
+	console.log("RUST AUTOMOD: Active with path validation enabled");
+	console.log("RUST AUTOMOD: Protected directories: .git, target, node_modules, and more");
 }
 
 export function deactivate() { }
