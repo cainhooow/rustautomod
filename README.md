@@ -1,5 +1,7 @@
 # Rust Automod
 
+![RustAutomod Logo By Saky](assets/automodlogo.png)
+
 Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.
 
 ## 🚀 What It Solves
@@ -153,3 +155,5 @@ pub mod advanced_mod;
 ## 🤝 Contribution
 
 Contributions, issues, and feature requests are welcome!
+
+🎨 Art produced by [Saki](https://instagram.com/sak1_sk)
