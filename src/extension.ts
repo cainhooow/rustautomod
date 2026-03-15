@@ -1,13 +1,15 @@
 import * as vscode from 'vscode';
 import { validateRautomod } from './linting/linting.automod';
 import { completionProvider } from './linting/linting.completion';
-import { hiddenModFiles } from './workbench/control';
 import { handleFileDelete, handleFileRename, handleNewFile } from './automod/automodModFile';
-import { isValidRustPath, shouldMonitorDirectory } from './utils/pathValidator';
+import { isValidRustPath } from './utils/pathValidator';
+import { ModVisibilityController } from './workbench/control';
 import path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log("RUST AUTOMOD INIT");
+
+	const modVisibilityController = new ModVisibilityController(context);
 	
 	// Create a watcher that excludes known problematic directories
 	const watcher = vscode.workspace.createFileSystemWatcher(
@@ -19,7 +21,24 @@ export function activate(context: vscode.ExtensionContext) {
 	
 	const diagnosticCollection = vscode.languages.createDiagnosticCollection("rustautomod");
 
-	const toggleHide = vscode.commands.registerCommand("rustautomod.toggleHideModRs", hiddenModFiles);
+	const toggleHide = vscode.commands.registerCommand(
+		"rustautomod.toggleHideModRs",
+		() => modVisibilityController.toggleAutoHideIndexModRs()
+	);
+	const hideThisMod = vscode.commands.registerCommand(
+		"rustautomod.hideThisModRs",
+		(resource?: vscode.Uri) => modVisibilityController.hideThisModRs(resource)
+	);
+	const restoreHiddenMod = vscode.commands.registerCommand(
+		"rustautomod.restoreHiddenModRs",
+		(resource?: vscode.Uri) => modVisibilityController.restoreHiddenModRs(resource)
+	);
+	const configChangeListener = vscode.workspace.onDidChangeConfiguration(event => {
+		modVisibilityController.handleConfigurationChange(event);
+	});
+	const workspaceFoldersChangeListener = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+		void modVisibilityController.initialize();
+	});
 
 	vscode.workspace.onDidOpenTextDocument(doc => validateRautomod(doc, diagnosticCollection));
 	vscode.workspace.onDidSaveTextDocument(doc => validateRautomod(doc, diagnosticCollection));
@@ -43,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
 		pendingRenames.clear();
 		debounceTimeout = null;
 
-		if (createdUris.length === 0 && deletedUris.length === 0 && renames.length === 0) return;
+		if (createdUris.length === 0 && deletedUris.length === 0 && renames.length === 0) {return;}
 
 		if (renames.length > 0) {
 			console.log(`RUST AUTOMOD: Processing ${renames.length} renames (waiting for Rust Analyzer)...`);
@@ -96,6 +115,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	watcher.onDidCreate(async (uri) => {
 		const filePath = uri.fsPath;
+
+		if (path.basename(filePath) === "mod.rs") {
+			modVisibilityController.scheduleRefresh(uri, true);
+		}
 		
 		// CRITICAL: Validate path early to prevent operations in wrong directories
 		if (!isValidRustPath(filePath)) {
@@ -142,8 +165,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// Count matching prefix characters
 			for (let i = 0; i < Math.min(delName.length, fileName.length); i++) {
-				if (delName[i] === fileName[i]) nameScore++;
-				else break;
+				if (delName[i] === fileName[i]) {nameScore++;}
+				else {break;}
 			}
 
 			// Prefer recent deletes (0-1 normalized, newer = higher score)
@@ -173,6 +196,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	watcher.onDidDelete(async (uri) => {
 		const filePath = uri.fsPath;
+
+		if (path.basename(filePath) === "mod.rs") {
+			modVisibilityController.scheduleRefresh(uri, true);
+		}
 		
 		// CRITICAL: Validate path early to prevent operations in wrong directories
 		if (!isValidRustPath(filePath)) {
@@ -213,9 +240,19 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	watcher.onDidChange((uri) => {
+		if (path.basename(uri.fsPath) === "mod.rs") {
+			modVisibilityController.scheduleRefresh(uri);
+		}
+	});
 
 	context.subscriptions.push(watcher);
 	context.subscriptions.push(toggleHide);
+	context.subscriptions.push(hideThisMod);
+	context.subscriptions.push(restoreHiddenMod);
+	context.subscriptions.push(configChangeListener);
+	context.subscriptions.push(workspaceFoldersChangeListener);
+	context.subscriptions.push(modVisibilityController);
 	context.subscriptions.push(diagnosticCollection);
 	context.subscriptions.push(completionProvider);
 
@@ -234,6 +271,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Show startup notification with safety info
 	console.log("RUST AUTOMOD: Active with path validation enabled");
 	console.log("RUST AUTOMOD: Protected directories: .git, target, node_modules, and more");
+	void modVisibilityController.initialize();
 }
 
 export function deactivate() { }

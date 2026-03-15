@@ -33,7 +33,7 @@ suite('Debounce Mechanism Tests', () => {
             const debounceDelay = 500;
 
             const scheduleProcess = () => {
-                if (timeout) clearTimeout(timeout);
+                if (timeout) {clearTimeout(timeout);}
                 timeout = setTimeout(() => {
                     processCount++;
                 }, debounceDelay);
@@ -52,7 +52,7 @@ suite('Debounce Mechanism Tests', () => {
             await new Promise(resolve => setTimeout(resolve, 600));
 
             assert.strictEqual(processCount, 1, 'Should only process once despite multiple events');
-            if (timeout) clearTimeout(timeout);
+            if (timeout) {clearTimeout(timeout);}
         });
     });
 

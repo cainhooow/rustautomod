@@ -134,8 +134,8 @@ suite('Mass Rename Detection Tests', () => {
                 for (const [delPath, info] of recentDeletes.entries()) {
                     const timeDiff = now - info.timestamp;
 
-                    if (timeDiff >= RENAME_DETECTION_WINDOW) continue;
-                    if (path.dirname(delPath) !== path.dirname(newPath)) continue;
+                    if (timeDiff >= RENAME_DETECTION_WINDOW) {continue;}
+                    if (path.dirname(delPath) !== path.dirname(newPath)) {continue;}
 
                     // Prefer exact match
                     if (delPath === old) {
@@ -148,8 +148,8 @@ suite('Mass Rename Detection Tests', () => {
                     let nameScore = 0;
                     const delName = info.fileName;
                     for (let j = 0; j < Math.min(delName.length, newName.length); j++) {
-                        if (delName[j] === newName[j]) nameScore++;
-                        else break;
+                        if (delName[j] === newName[j]) {nameScore++;}
+                        else {break;}
                     }
 
                     const timeScore = 1 - (timeDiff / RENAME_DETECTION_WINDOW);
@@ -443,8 +443,8 @@ suite('Mass Rename Detection Tests', () => {
                         const delName = info.fileName;
                         let score = 0;
                         for (let i = 0; i < Math.min(delName.length, createName.length); i++) {
-                            if (delName[i] === createName[i]) score++;
-                            else break;
+                            if (delName[i] === createName[i]) {score++;}
+                            else {break;}
                         }
 
                         if (score > bestScore) {

@@ -1,159 +1,153 @@
 # Rust Automod
 
-![RustAutomod Logo By Saky](assets/automodlogo.png)
+![RustAutomod Logo By Saki](assets/automodlogo.png)
 
-Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.
+Art produced by [Saki](https://instagram.com/sak1_sk)
 
-## 🚀 What It Solves
+Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports `.rautomod` project rules, and now includes smarter `mod.rs` visibility controls inside the VS Code Explorer.
 
-- In Rust, a folder without a `mod.rs` file is not automatically recognized as a module. This can lead to tedious manual work when creating new files or folders. Rust Automod automates this by:
+## What it does
 
-- Automatically creating a `mod.rs` file when a new Rust file is added to a folder.
+- Creates `mod.rs` when a new Rust file appears in a module folder.
+- Updates `mod.rs`, `lib.rs`, or `main.rs` when modules are added or removed.
+- Supports nested folders and parent module registration.
+- Supports `.rautomod` rules for `visibility`, `sort`, `cfg`, `pattern`, and `fmt`.
+- Can run `cargo fmt` after updates.
+- Adds linting and completions for `.rautomod`.
+- Hides `mod.rs` more intelligently in the Explorer.
 
-- Adding new module declarations (`mod` or `pub mod`) in the `mod.rs` file automatically.
+## New mod.rs visibility features
 
-- Creating `mod.rs` in nested folders and updating the parent module automatically.
+Rust Automod now supports three Explorer workflows for `mod.rs`:
 
-- Removing module declarations when a Rust file is deleted.
+1. Smart hide for all index-like `mod.rs`
+2. Manual hide for one specific `mod.rs`
+3. Restore for both flows
 
-- Ensuring modules are sorted alphabetically (optional) and avoiding duplicates.
+### Smart hide
 
-- Supporting project-specific configuration through a `.rautomod` file.
+Use the command `Toggle Smart mod.rs Hiding`.
 
-- NEW: Toggle mod.rs visibility → Hide or show all `mod.rs` files in the VSCode Explorer with a single command, keeping your workspace cleaner.
+When it is enabled, the extension hides only `mod.rs` files that behave like lightweight indexes, such as files containing only:
 
-## 📁 `.rautomod` Configuration
+- `mod foo;`
+- `pub mod foo;`
+- `#[cfg(...)]` attributes attached to those declarations
+- `pub use ...;` re-exports
 
-You can place a `.rautomod` file in the root of your Rust project (or any folder) to customize Automod behavior. The available configuration options are:
+If a `mod.rs` contains real code, like functions, structs, impls, constants, inline modules with bodies, or any other implementation content, it stays visible.
 
-```.rautomod
-# 'pub' for public modules (pub mod), 'private' for private modules (mod)
-visibility=pub
+### Manual hide
 
-# 'alpha' to sort module declarations alphabetically, 'none' to preserve insertion order
-sort=alpha          
+Right-click a `mod.rs` file in the Explorer and run:
 
-# 'enabled' to automatically run 'cargo fmt' after a change
-fmt=enabled
+- `Hide This mod.rs`
 
-# Comma-separated list of conditional compilation flags
-cfg=feature="my_feature",unix
+This hides only that file.
 
-# Comma-separated list of file/folder names to apply this rule to
-pattern=crate,private,another......
-```
+### Restore
 
-## Basic Usage
+To restore hidden files, use:
 
-```.rautomod
+- `Restore Hidden mod.rs`
+
+If you run it from the Explorer on a specific `mod.rs`, it restores that file directly.
+If you run it from the Command Palette, the extension shows a picker with the manually hidden `mod.rs` files.
+
+## Commands
+
+- `Toggle Smart mod.rs Hiding`
+- `Hide This mod.rs`
+- `Restore Hidden mod.rs`
+
+## .rautomod configuration
+
+Place a `.rautomod` file at the root of your Rust project, or inside a subfolder, to customize behavior.
+
+Example:
+
+```rautomod
 visibility=pub
 sort=alpha
+fmt=enabled
 ```
 
-- Creates all module declarations as `pub mod`.
+Available keys:
 
-- Sorts modules alphabetically in `mod.rs`.
+- `visibility=pub|private`
+- `sort=alpha|none`
+- `fmt=enabled|disabled`
+- `cfg=feature="serde",all(unix, target_pointer_width = "64")`
+- `pattern=utils,helpers,internal`
 
-## Advanced Usage with Patterns and Formatting
+Example with patterns:
 
-```.rautomod
-# Make utils and helpers private, unsorted, and don't format them automatically
+```rautomod
 visibility=private
 sort=none
 fmt=disabled
 pattern=utils,helpers
 
-# Make all other modules public, sorted, and run 'cargo fmt' after changes
 visibility=pub
 sort=alpha
 fmt=enabled
 ```
 
-- The first block applies only to files/folders named `utils` or `helpers`.
+## Installation
 
-- The second block (without `pattern`) is a fallback rule for all other files.
+1. Open VS Code.
+2. Open Extensions.
+3. Search for `Rust AutoMod`.
+4. Install and reload the editor.
 
-- Patterns support **comma-separated** lists and can match file or folder names.
+## Usage
 
-## Advanced Configuration: Conditional Compilation (cfg)
+1. Open a Rust project with a `Cargo.toml`.
+2. Optionally add a `.rautomod` file.
+3. Create or delete `.rs` files inside your module folders.
+4. Use the Explorer commands when you want to hide or restore `mod.rs`.
 
-For projects that require conditional compilation, you can use the `cfg` key. It accepts a comma-separated list of conditions. Automod will generate a `mod` declaration for each condition.
+## Internal structure
 
-**Example** `.rautomod`:
+The extension was refactored so each responsibility lives in a smaller module.
 
-```.rautomod
-# This rule applies only to files/folders named 'advanced_mod'
-visibility=pub
-cfg=feature="serde_support", all(unix, target_pointer_width = "64")
-pattern=advanced_mod
-```
+### Automod core
 
-When you create a file named `advanced_mod.rs`, the extension will generate the following in `mod.rs`:
+- `src/automod/automodModFile.ts`: orchestration for create, delete, and rename flows
+- `src/automod/modDeclarations.ts`: parsing and generation of module declaration blocks
+- `src/automod/modContentEditor.ts`: insertion, removal, and sorting of declaration content
+- `src/automod/modFileSystem.ts`: async file-system helpers and target-file resolution
+- `src/automod/cargoFmt.ts`: isolated `cargo fmt` integration
 
-```rs
-#[cfg(feature="serde_support")]
-pub mod advanced_mod;
-#[cfg(all(unix, target_pointer_width = "64"))]
-pub mod advanced_mod;
-```
+### Visibility and workspace state
 
-## ⚡ Features
+- `src/workbench/control.ts`: Explorer command/controller flow
+- `src/workbench/modVisibility.ts`: index-like `mod.rs` detection and exclude reconciliation
+- `src/workbench/modVisibilityWorkspaceService.ts`: per-workspace visibility persistence and `files.exclude` sync
+- `src/workspace/workspaceStateService.ts`: generic workspace-scoped state storage
 
-- **Automatic** `mod.rs` **creation**: No need to manually create `mod.rs` when adding a new Rust file.
+## Development
 
-- **Automatic module registration**: Updates parent `mod.rs` and child folders automatically.
+### Scripts
 
-- **Deletion support**: Removes module declarations when files are deleted.
+- `yarn compile`
+- `yarn lint`
+- `yarn test:unit`
+- `yarn test`
 
-- **Project-specific configuration**: `.rautomod` allows different settings per project.
+### Test coverage
 
-- **Optional sorting**: Alphabetical ordering of module declarations.
+The project now includes:
 
-- **NEW: Conditional Compilation Support**: Automatically add `#[cfg(...)]` attributes to new modules via `.rautomod.`
+- unit tests for visibility heuristics
+- unit tests for `mod.rs` content editing
+- extension integration tests for Explorer commands and `files.exclude`
+- the existing debounce and rename-detection suites
 
-- **NEW: Automatic Formatting**: Optionally run `cargo fmt` after every change to keep code consistent.
+## Notes
 
-- **IntelliSense support**: Autocomplete for `.rautomod` keys (`visibility`, `sort`, `pattern`, `cfg`, `fmt`) and values (`pub`, `private`, `alpha`, `none`, `enabled`, `disabled`).
+- `fmt=enabled` requires `cargo` and `rustfmt` to be available in your environment.
+- If no `.rautomod` file is found, Rust Automod falls back to VS Code settings under `rustautomod.*`.
+- The extension ignores invalid or unsafe paths such as `.git`, `target`, `node_modules`, and similar folders.
 
-- **Linting**: `.rautomod` is validated with inline errors in VSCode.
-
-- **Hide/Show** `mod.rs` **files**: Quickly toggle the visibility of all mod.rs files via the Command Palette (Hidden/Show Rust Modules Files).
-
-## 🛠 Installation
-
-1. Open VSCode and go to Extensions.
-
-2. Search for Rust Automod.
-
-3. Install and reload VSCode.
-
-## 📌 Usage
-
-1. Create a Rust project or open an existing one in VSCode.
-
-2. Optionally, add a `.rautomod` file at the root with your desired settings.
-
-3. Create a new Rust file inside any folder:
-    - Automod will create or update `mod.rs`.
-    - The new module will be added automatically.
-
-4. Delete a Rust file:
-    - Automod will remove the module declaration from `mod.rs`.
-
-5. Use autocomplete and linting when editing `.rautomod` to ensure correct configuration.
-
-# 💡 Notes
-
-- **Formatting Prerequisite**: For `fmt=enabled` to work, `rustfmt` must be installed (`rustup component add rustfmt`) and the `cargo` command must be available in your system's PATH.
-
-- If no `.rautomod` file is found, Automod will fallback to the global VSCode settings (`rustautomod.visibility`, `rustautomod.sort`, and `rustautomod.fmt`), defaulting to pub, none, and disabled.
-
-- Nested folders are supported; Automod will create `mod.rs` files recursively as needed.
-
-- `pattern` rules allow per-folder or per-file customization for all settings.
-
-## 🤝 Contribution
-
-Contributions, issues, and feature requests are welcome!
-
-🎨 Art produced by [Saki](https://instagram.com/sak1_sk)
+Contributions, issues, and feature requests are welcome.

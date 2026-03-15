@@ -56,7 +56,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
 
             if (/^cfg\s*=/.test(linePrefix)) {
                 completions.push(new vscode.CompletionItem("windows,unix", vscode.CompletionItemKind.Value));
-                completions.push(new vscode.CompletionItem("feature=\"serde_support\",all(unix, target_point_width = \"64\")"))
+                completions.push(new vscode.CompletionItem("feature=\"serde_support\",all(unix, target_point_width = \"64\")"));
             }
 
             return completions;

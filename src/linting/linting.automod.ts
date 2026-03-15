@@ -11,7 +11,7 @@ export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection:
     const lines = doc.getText().split(/\r?\n/);
     lines.forEach((line, index) => {
         const trimmed = line.trim();
-        if (trimmed === "" || trimmed.startsWith("#")) return;
+        if (trimmed === "" || trimmed.startsWith("#")) {return;}
 
         if (/^visibility\s*=/.test(trimmed)) {
             if (!/^visibility\s*=\s*(pub|private)$/.test(trimmed)) {
@@ -38,7 +38,7 @@ export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection:
         } else {
             diagnostics.push(createDiagnostic(index, "invalid line in .rautomod"));
         }
-    })
+    });
 
     diagnosticCollection.set(doc.uri, diagnostics);
 }
