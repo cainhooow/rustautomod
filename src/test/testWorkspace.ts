@@ -111,7 +111,20 @@ export async function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFol
 }
 
 export async function deleteDirectory(directoryPath: string): Promise<void> {
-    await fs.rm(directoryPath, { recursive: true, force: true });
+    const maxAttempts = 10;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            await fs.rm(directoryPath, { recursive: true, force: true });
+            return;
+        } catch (error) {
+            if (!isRetryableDeleteError(error) || attempt === maxAttempts) {
+                throw error;
+            }
+
+            await delay(100 * attempt);
+        }
+    }
 }
 
 export async function waitForCondition(
@@ -134,4 +147,12 @@ export async function waitForCondition(
 
 export async function delay(milliseconds: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function isRetryableDeleteError(error: unknown): boolean {
+    if (!error || typeof error !== "object" || !("code" in error)) {
+        return false;
+    }
+
+    return error.code === "EBUSY" || error.code === "EPERM" || error.code === "ENOTEMPTY";
 }

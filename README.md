@@ -4,7 +4,7 @@
 
 Art produced by [Saki](https://instagram.com/sak1_sk)
 
-Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports `.rautomod` project rules, and now includes smarter `mod.rs` visibility controls inside the VS Code Explorer.
+Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smarter `mod.rs` visibility controls inside the VS Code Explorer.
 
 ## What it does
 
@@ -13,7 +13,7 @@ Rust Automod is a Visual Studio Code extension that keeps Rust module files in s
 - Supports nested folders and parent module registration.
 - Supports `.rautomod` rules for `visibility`, `sort`, `cfg`, `pattern`, and `fmt`.
 - Can run `cargo fmt` after updates.
-- Adds linting and completions for `.rautomod`.
+- Adds a dedicated file icon, syntax highlighting, linting, completions, and formatting for `.rautomod`.
 - Hides `mod.rs` more intelligently in the Explorer.
 
 ## New mod.rs visibility features
@@ -63,6 +63,8 @@ If you run it from the Command Palette, the extension shows a picker with the ma
 ## .rautomod configuration
 
 Place a `.rautomod` file at the root of your Rust project, or inside a subfolder, to customize behavior.
+
+The file is now recognized as its own VS Code language, with a dedicated Explorer icon, colors for comments, keys, operators, known values, `cfg(...)` expressions, and list entries. You can also run `Format Document` on `.rautomod` files to normalize spacing, assignment style, blank lines, and comma-separated lists.
 
 Example:
 
@@ -141,7 +143,9 @@ The project now includes:
 
 - unit tests for visibility heuristics
 - unit tests for `mod.rs` content editing
+- unit tests for `.rautomod` formatting
 - extension integration tests for Explorer commands and `files.exclude`
+- extension integration tests for `.rautomod` language detection and formatting
 - the existing debounce and rename-detection suites
 
 ## Notes

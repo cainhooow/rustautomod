@@ -1,5 +1,6 @@
 import path from "path";
 import * as vscode from "vscode";
+import { smartSplitCfg } from "../automod/cfgUtils";
 
 export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection: vscode.DiagnosticCollection) {
     if (path.basename(doc.fileName) !== ".rautomod") {
@@ -27,7 +28,7 @@ export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection:
                 diagnostics.push(createDiagnostic(index, "pattern values cannot be empty"));
             }
         } else if (/^cfg\s*=/.test(trimmed)) {
-            const values = trimmed.split("=")[1].split(",").map(s => s.trim());
+            const values = smartSplitCfg(trimmed.split("=")[1]);
             if (values.some(v => v === "")) {
                 diagnostics.push(createDiagnostic(index, "cfg values cannot be empty"));
             }

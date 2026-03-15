@@ -26,6 +26,7 @@ suite("Extension Integration", () => {
     suiteTeardown(async function () {
         this.timeout(10000);
         try {
+            await vscode.commands.executeCommand("workbench.action.closeAllEditors");
             await removeWorkspaceFolder(workspaceFolder);
         } catch (error) {
             console.warn("RUST AUTOMOD TEST: Failed to remove temporary workspace folder cleanly.", error);
@@ -81,6 +82,47 @@ suite("Extension Integration", () => {
         await vscode.commands.executeCommand("rustautomod.restoreHiddenModRs", vscode.Uri.file(targetMod));
 
         await waitForCondition(() => getWorkspaceExcludes(workspaceFolder)["src/manual/mod.rs"] !== true, 5000, 100);
+    });
+
+    test("recognizes .rautomod as its own language and formats the document", async function () {
+        this.timeout(10000);
+
+        const configPath = path.join(workspacePath, ".rautomod");
+        await fs.writeFile(
+            configPath,
+            `  # project defaults
+visibility = pub
+
+pattern = utils, helpers
+cfg = feature="serde", all(unix, target_pointer_width = "64")
+`,
+            "utf8"
+        );
+
+        const document = await vscode.workspace.openTextDocument(configPath);
+        assert.strictEqual(document.languageId, "rautomod");
+
+        const edits = await vscode.commands.executeCommand<vscode.TextEdit[]>(
+            "vscode.executeFormatDocumentProvider",
+            document.uri
+        );
+
+        assert.ok(edits && edits.length > 0);
+
+        const workspaceEdit = new vscode.WorkspaceEdit();
+        workspaceEdit.set(document.uri, edits);
+        await vscode.workspace.applyEdit(workspaceEdit);
+
+        const formattedDocument = await vscode.workspace.openTextDocument(configPath);
+        assert.strictEqual(
+            formattedDocument.getText(),
+            `# project defaults
+visibility=pub
+
+pattern=utils,helpers
+cfg=feature="serde",all(unix, target_pointer_width = "64")
+`
+        );
     });
 
     test("smart hiding reacts when a hidden mod.rs gains real content", async function () {

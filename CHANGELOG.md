@@ -11,8 +11,12 @@ This release adds smarter `mod.rs` visibility controls, improves safety around i
 - Smart hiding for `mod.rs` files that behave only like indexes.
 - Manual hide for a single `mod.rs` through the Explorer context menu.
 - Restore flow for manually hidden `mod.rs` files.
+- Dedicated file icon for `.rautomod`.
+- Syntax highlighting for `.rautomod` files, with dedicated tokens for comments, keys, values, and `cfg` expressions.
+- Document formatting support for `.rautomod`.
 - Real integration tests for Explorer commands and `files.exclude`.
 - Dedicated tests for `mod.rs` content editing and visibility heuristics.
+- Dedicated tests for `.rautomod` formatting.
 - Regression test to guarantee that files inside `.git` are ignored.
 
 #### Changed
@@ -20,6 +24,7 @@ This release adds smarter `mod.rs` visibility controls, improves safety around i
 - Refactored the `automod` core into smaller modules for declaration parsing, content editing, file IO, and `cargo fmt`.
 - Migrated hot file operations away from `fs.*Sync` to async flows.
 - Introduced workspace-scoped services for persisted extension state and visibility management.
+- `.rautomod` completion and validation now share reusable parsing helpers with the formatter.
 - Reworked the README and development scripts to reflect the new architecture and test setup.
 
 #### Fixed

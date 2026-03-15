@@ -3,7 +3,7 @@
   "displayName": "Rust AutoMod",
   "icon": "assets/automodlogo.png",
   "description": "Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "author": "Cainhooow - Caio Augusto",
   "publisher": "drkryz",
   "engines": {
@@ -18,6 +18,7 @@
     "Linters"
   ],
   "activationEvents": [
+    "onLanguage:rautomod",
     "onLanguage:rust",
     "onFileSystem:*.rs",
     "workspaceContains:**/Cargo.toml",
@@ -27,6 +28,30 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "rautomod",
+        "aliases": [
+          "Rust Automod",
+          "rautomod"
+        ],
+        "filenames": [
+          ".rautomod"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./assets/rautomod-file-light.svg",
+          "dark": "./assets/rautomod-file-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "rautomod",
+        "scopeName": "source.rautomod",
+        "path": "./syntaxes/rautomod.tmLanguage.json"
+      }
+    ],
     "menus": {
       "commandPalette": [
         {
@@ -102,7 +127,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint",
-    "test:unit": "mocha --ui tdd out/test/modContentEditor.test.js out/test/modVisibility.test.js",
+    "test:unit": "mocha --ui tdd out/test/modContentEditor.test.js out/test/modVisibility.test.js out/test/rautomodFormatting.test.js",
     "lint": "eslint src",
     "test": "vscode-test"
   },

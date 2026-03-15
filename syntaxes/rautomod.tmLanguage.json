@@ -1,0 +1,88 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Rust Automod",
+  "scopeName": "source.rautomod",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#assignment"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.rautomod",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "assignment": {
+      "patterns": [
+        {
+          "captures": {
+            "1": {
+              "name": "keyword.control.rautomod"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.rautomod"
+            },
+            "3": {
+              "patterns": [
+                {
+                  "include": "#constantValue"
+                },
+                {
+                  "include": "#cfgValue"
+                },
+                {
+                  "include": "#listValue"
+                }
+              ]
+            }
+          },
+          "match": "^\\s*(visibility|sort|fmt|pattern|cfg)\\s*(=)\\s*(.*?)\\s*$"
+        }
+      ]
+    },
+    "constantValue": {
+      "patterns": [
+        {
+          "name": "constant.language.rautomod",
+          "match": "\\b(?:pub|private|alpha|none|enabled|disabled)\\b"
+        }
+      ]
+    },
+    "cfgValue": {
+      "patterns": [
+        {
+          "name": "entity.name.function.rautomod",
+          "match": "\\b(?:all|any|not|feature|target_os|target_env|target_arch|target_pointer_width|windows|unix)\\b"
+        },
+        {
+          "name": "string.quoted.double.rautomod",
+          "begin": "\"",
+          "end": "\""
+        },
+        {
+          "name": "constant.numeric.rautomod",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "listValue": {
+      "patterns": [
+        {
+          "name": "variable.other.rautomod",
+          "match": "[A-Za-z_][A-Za-z0-9_\\-]*"
+        },
+        {
+          "name": "punctuation.separator.comma.rautomod",
+          "match": ","
+        }
+      ]
+    }
+  }
+}

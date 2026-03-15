@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { validateRautomod } from './linting/linting.automod';
 import { completionProvider } from './linting/linting.completion';
+import { formattingProvider } from './linting/linting.formatting';
 import { handleFileDelete, handleFileRename, handleNewFile } from './automod/automodModFile';
 import { isValidRustPath } from './utils/pathValidator';
 import { ModVisibilityController } from './workbench/control';
@@ -255,6 +256,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(modVisibilityController);
 	context.subscriptions.push(diagnosticCollection);
 	context.subscriptions.push(completionProvider);
+	context.subscriptions.push(formattingProvider);
 
 	context.subscriptions.push(new vscode.Disposable(() => {
 		if (debounceTimeout) {

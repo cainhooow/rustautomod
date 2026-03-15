@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 export const completionProvider = vscode.languages.registerCompletionItemProvider(
-    { pattern: "**/.rautomod" },
+    [{ language: "rautomod" }, { pattern: "**/.rautomod" }],
     {
         provideCompletionItems(document, pos) {
             const linePrefix = document.lineAt(pos).text.substring(0, pos.character);
@@ -27,7 +27,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             }
 
             if ("fmt".startsWith(linePrefix.trim())) {
-                const item = new vscode.CompletionItem("cfg", vscode.CompletionItemKind.Keyword);
+                const item = new vscode.CompletionItem("fmt", vscode.CompletionItemKind.Keyword);
                 item.detail = "Define whether you want formatting with cargo fmt after deleting/creating mod.rs";
                 completions.push(item);
             }
@@ -57,6 +57,11 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             if (/^cfg\s*=/.test(linePrefix)) {
                 completions.push(new vscode.CompletionItem("windows,unix", vscode.CompletionItemKind.Value));
                 completions.push(new vscode.CompletionItem("feature=\"serde_support\",all(unix, target_point_width = \"64\")"));
+            }
+
+            if (/^fmt\s*=/.test(linePrefix)) {
+                completions.push(new vscode.CompletionItem("enabled", vscode.CompletionItemKind.Value));
+                completions.push(new vscode.CompletionItem("disabled", vscode.CompletionItemKind.Value));
             }
 
             return completions;
