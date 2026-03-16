@@ -15,17 +15,22 @@ import {
     ResolvedAutomodConfig
 } from "../interfaces/automodconf";
 import { smartSplitCfg } from "./cfgUtils";
+import { formatRautomod } from "../linting/rautomodFormatter";
 
-const VALID_VISIBILITY: readonly AutomodVisibility[] = ["pub", "private", "pub(crate)", "pub(super)"];
-const VALID_SORT: readonly AutomodSortMode[] = ["alpha", "alpha_case_insensitive", "none", "pub_first", "cfg_first"];
-const VALID_FMT: readonly AutomodFmtMode[] = ["enabled", "disabled"];
-const VALID_TARGET: readonly AutomodTarget[] = ["auto", "mod.rs", "lib.rs", "main.rs"];
-const VALID_GROUP_ORDER: readonly AutomodGroupOrder[] = ["cfg", "pub_mod", "mod", "pub_use", "use"];
-const VALID_STRICT_MODE: readonly AutomodStrictMode[] = ["off", "warn", "error"];
-const DEFAULT_GROUP_ORDER: AutomodGroupOrder[] = ["use", "cfg", "pub_mod", "mod", "pub_use"];
+export const VALID_VISIBILITY: readonly AutomodVisibility[] = ["pub", "private", "pub(crate)", "pub(super)"];
+export const VALID_SORT: readonly AutomodSortMode[] = ["alpha", "alpha_case_insensitive", "none", "pub_first", "cfg_first"];
+export const VALID_FMT: readonly AutomodFmtMode[] = ["enabled", "disabled"];
+export const VALID_TARGET: readonly AutomodTarget[] = ["auto", "mod.rs", "lib.rs", "main.rs"];
+export const VALID_GROUP_ORDER: readonly AutomodGroupOrder[] = ["cfg", "pub_mod", "mod", "pub_use", "use"];
+export const VALID_STRICT_MODE: readonly AutomodStrictMode[] = ["off", "warn", "error"];
+export const DEFAULT_GROUP_ORDER: AutomodGroupOrder[] = ["use", "cfg", "pub_mod", "mod", "pub_use"];
 
 export function parseRautomod(content: string): AutomodRule[] {
     return parseRautomodDocument(content).rules;
+}
+
+export function createDefaultAutomodRule(sourcePath?: string): AutomodRule {
+    return createDefaultRule(sourcePath);
 }
 
 export function parseRautomodDocument(content: string, sourcePath?: string): AutomodConfigDocument {
@@ -189,6 +194,24 @@ export function parseRautomodDocument(content: string, sourcePath?: string): Aut
         rules,
         diagnostics
     };
+}
+
+export function serializeRautomodDocument(document: AutomodConfigDocument): string {
+    const lines: string[] = [];
+
+    lines.push(`schema_version=${document.schemaVersion || "1"}`);
+    lines.push(`strict=${document.strictMode || "warn"}`);
+
+    if (document.extendsPaths.length > 0) {
+        lines.push(`extends=${document.extendsPaths.join(",")}`);
+    }
+
+    for (const rule of document.rules) {
+        lines.push("");
+        lines.push(...serializeRule(rule));
+    }
+
+    return formatRautomod(lines.join("\n"));
 }
 
 export function findConfigForFile(rules: AutomodRule[], filePath: string): AutomodRule | null {
@@ -515,6 +538,41 @@ function getDefaultConfig(configuration: vscode.WorkspaceConfiguration): Automod
 
 function splitSimpleList(value: string): string[] {
     return value.split(",").map(entry => entry.trim()).filter(Boolean);
+}
+
+function serializeRule(rule: AutomodRule): string[] {
+    const lines = [
+        `visibility=${rule.visibility}`,
+        `sort=${rule.sort}`,
+        `fmt=${rule.fmt ?? "disabled"}`,
+        `target=${rule.target ?? "auto"}`
+    ];
+
+    if (rule.pattern && rule.pattern.length > 0) {
+        lines.push(`pattern=${rule.pattern.join(",")}`);
+    }
+
+    if (rule.exclude && rule.exclude.length > 0) {
+        lines.push(`exclude=${rule.exclude.join(",")}`);
+    }
+
+    if (rule.cfg && rule.cfg.length > 0) {
+        lines.push(`cfg=${rule.cfg.join(",")}`);
+    }
+
+    lines.push(`group_order=${(rule.groupOrder ?? DEFAULT_GROUP_ORDER).join(",")}`);
+    lines.push(`blank_lines=${rule.blankLines ?? 1}`);
+    lines.push(`reexport=${rule.reexport ?? "disabled"}`);
+
+    if (rule.header?.trim()) {
+        lines.push(`header=${rule.header.trim()}`);
+    }
+
+    if (rule.generatedComment?.trim()) {
+        lines.push(`generated_comment=${rule.generatedComment.trim()}`);
+    }
+
+    return lines;
 }
 
 function normalizePath(filePath: string): string {

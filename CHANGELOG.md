@@ -2,6 +2,28 @@
 
 ## [Released]
 
+### 1.5.0
+
+This release introduces Rust AutoMod Studio for `.rautomod`, adding a visual editing experience and a workspace manager UI while keeping the raw `.rautomod` file as the real source of truth.
+
+#### Added
+
+- Custom editor support for `.rautomod` with `Visual`, `Split`, and `Raw` modes.
+- Workspace-wide Rust AutoMod manager UI for browsing configs, opening them visually, and scaffolding new ones.
+- Product-style shared webview styling and front-end assets for the new Studio surfaces.
+- Public `.rautomod` serialization helpers used by the visual editor pipeline.
+- Documentation for the visual editor and manager flows in `docs/RAUTOMOD_STUDIO.md`.
+
+#### Changed
+
+- `Open Rust AutoMod Manager` now opens a full manager panel, while the activity bar container remains available as a secondary entry point.
+- `.rautomod` can now be treated as both a text format and a visual editing surface inside VS Code.
+- README documentation now explains when to use Visual, Split, and Raw workflows.
+
+#### Notes
+
+- Visual saves normalize the `.rautomod` structure and may rewrite comments or custom spacing, so `Raw` or `Split` mode is recommended when preserving hand-written notes matters.
+
 ### 1.4.0
 
 This release expands Rust AutoMod from a module-sync helper into a more complete workflow tool, with preview, undo, regeneration, richer `.rautomod` rules, quick fixes, and better inspection/debugging commands.

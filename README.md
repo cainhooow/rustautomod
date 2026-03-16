@@ -10,6 +10,7 @@ Rust Automod is a Visual Studio Code extension that keeps Rust module files in s
 
 - For practical scenarios and copy-paste examples, see [docs/USE_CASES.md](docs/USE_CASES.md).
 - For a more detailed `.rautomod` reference, see [docs/RAUTOMOD_REFERENCE.md](docs/RAUTOMOD_REFERENCE.md).
+- For the visual editor and manager UI flows, see [docs/RAUTOMOD_STUDIO.md](docs/RAUTOMOD_STUDIO.md).
 
 ## What it does
 
@@ -19,6 +20,8 @@ Rust Automod is a Visual Studio Code extension that keeps Rust module files in s
 - Supports `.rautomod` rules for visibility, sorting, target selection, excludes, inheritance, generated comments, strict validation, and more.
 - Can run `cargo fmt` after updates.
 - Adds a dedicated file icon, syntax highlighting, linting, completions, and formatting for `.rautomod`.
+- Opens `.rautomod` in a custom visual editor with `Visual`, `Split`, and `Raw` modes.
+- Includes a workspace-wide Rust AutoMod manager UI for browsing configs and scaffolding new ones.
 - Supports preview/dry run, undo of the last automod action, workspace or folder regeneration, and structured logging.
 - Can explain why a file was registered a certain way and show the effective config that won for a Rust file.
 - Can scaffold a `.rautomod` file and ignore files or folders from the Explorer.
@@ -51,6 +54,62 @@ If `strict=error` and the `.rautomod` file has blocking diagnostics, Rust AutoMo
 - `Ignore in .rautomod`: prepends an `exclude=` rule for a file or folder from the Explorer.
 - `Scaffold .rautomod`: creates a starter config with the new keys and examples.
 - Conflict detection warns when Rust AutoMod notices manual edits in the managed declaration area before writing again.
+
+## Rust AutoMod Studio UI
+
+Rust AutoMod now treats `.rautomod` as a first-class editing surface instead of only a plain text file.
+
+There are two UI entry points:
+
+1. A per-file visual editor for each `.rautomod`
+2. A manager surface for browsing configs across the workspace
+
+### Visual editor for each `.rautomod`
+
+Each `.rautomod` file can open in a custom editor with three modes:
+
+- `Visual`: form-based editing for rule blocks and global config
+- `Split`: visual cards side-by-side with the raw text
+- `Raw`: a focused text area for manual edits
+
+The visual editor exposes:
+
+- `schema_version`, `strict`, and `extends`
+- rule cards for `visibility`, `sort`, `fmt`, `target`, `pattern`, `exclude`, `cfg`, `group_order`, `blank_lines`, `reexport`, `header`, and `generated_comment`
+- live diagnostics from the extension parser
+- quick actions to duplicate, remove, or add rule blocks
+- `Format Raw`, `Apply Raw Changes`, and `Open Raw Externally`
+
+### Manager UI
+
+Use `Open Rust AutoMod Manager` to open a central panel, or open the Rust AutoMod activity bar container to access the manager view.
+
+The manager UI gives you:
+
+- a workspace-wide list of `.rautomod` files
+- quick search by path, workspace, or strict mode
+- summary cards for configs, rules, diagnostics, and workspaces
+- direct actions to open a config visually or in raw mode
+- scaffold actions for workspace roots
+- quick access to the Rust AutoMod log
+
+This manager is meant to feel closer to a product control surface, similar in spirit to a settings UI, while still keeping the actual `.rautomod` file as the source of truth.
+
+### Studio gallery
+
+The screenshots below use the `pdv-server` example workspace.
+
+Manager view:
+
+![Rust AutoMod Studio manager view](assets/screenshots/studio-manager-pdv-server.png)
+
+Visual editor for `src/application/queries/.rautomod`:
+
+![Rust AutoMod Studio visual editor](assets/screenshots/studio-editor-visual-pdv-server.png)
+
+Split mode for the same config:
+
+![Rust AutoMod Studio split editor](assets/screenshots/studio-editor-split-pdv-server.png)
 
 ## New mod.rs visibility features
 
@@ -103,6 +162,9 @@ If you run it from the Command Palette, the extension shows a picker with the ma
 - `Ignore in .rautomod`
 - `Scaffold .rautomod`
 - `Open Rust AutoMod Log`
+- `Open .rautomod Visual`
+- `Open .rautomod Raw`
+- `Open Rust AutoMod Manager`
 
 ## Command workflows
 
@@ -145,11 +207,26 @@ Right-click a file or folder and use `Ignore in .rautomod` to prepend an `exclud
 - migration folders
 - vendored examples
 
+### Edit `.rautomod` visually
+
+Open any `.rautomod` file to work in the visual editor. Use `Split` when you want to see both the rule cards and the raw text at the same time.
+
+The visual editor is especially useful when:
+
+- you are creating a config for the first time
+- you want to compare multiple rule blocks quickly
+- you want guardrails around valid values such as `visibility`, `sort`, or `target`
+- you want diagnostics visible while editing
+
+If you want a broader workspace view, run `Open Rust AutoMod Manager` to open the central panel and jump into a config from there.
+
 ## .rautomod configuration
 
 Place a `.rautomod` file at the root of your Rust project, or inside a subfolder, to customize behavior.
 
 The file is now recognized as its own VS Code language, with a dedicated Explorer icon, colors for comments, keys, operators, known values, `cfg(...)` expressions, and list entries. You can run `Format Document` on `.rautomod` files to normalize spacing, assignment style, blank lines, and comma-separated lists, and the extension now provides quick fixes for invalid keys and common missing entries.
+
+If you prefer a GUI instead of editing raw text, open the file in the built-in visual editor. The visual editor still writes back to the same `.rautomod` text file, so Git history, diffs, merges, and manual editing continue to work normally.
 
 For a line-by-line explanation of every key, precedence rule, and matching behavior, see [docs/RAUTOMOD_REFERENCE.md](docs/RAUTOMOD_REFERENCE.md).
 
@@ -318,6 +395,13 @@ The extension was refactored so each responsibility lives in a smaller module.
 - `src/linting/linting.codeActions.ts`: quick fixes for invalid keys and common missing entries
 - `src/linting/linting.completion.ts`: completions for the expanded `.rautomod` key set
 - `src/linting/linting.formatting.ts`: document formatting provider for `.rautomod`
+- `src/ui/rautomodCustomEditor.ts`: per-file custom editor with visual, split, and raw workflows
+- `src/ui/rautomodManagerView.ts`: workspace manager sidebar and full manager panel
+- `src/ui/rautomodState.ts`: view-model shaping for the UI layer
+- `src/ui/rautomodWebviewTemplates.ts`: shared HTML shell for the Rust AutoMod Studio webviews
+- `media/rautomodWebview.css`: shared product-style UI styling for the manager and editor
+- `media/rautomodEditorWebview.js`: front-end logic for the per-file visual editor
+- `media/rautomodManagerWebview.js`: front-end logic for the manager UI
 
 ## Development
 
@@ -348,5 +432,6 @@ The project now includes:
 - `target=lib.rs` and `target=main.rs` are most useful for crate-root style rules.
 - The extension ignores invalid or unsafe paths such as `.git`, `target`, `node_modules`, and similar folders.
 - Some icon themes may override the default `.rautomod` icon contributed by the extension.
+- Visual saves normalize `.rautomod` structure and may rewrite comments or hand-tuned spacing, so use `Raw` or `Split` mode when you want to preserve crafted notes verbatim.
 
 Contributions, issues, and feature requests are welcome.

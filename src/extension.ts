@@ -20,6 +20,8 @@ import {
 import { AutomodRuntime } from './automod/automodRuntime';
 import { isValidRustPath } from './utils/pathValidator';
 import { ModVisibilityController } from './workbench/control';
+import { openRautomodRaw, openRautomodVisual, registerRautomodCustomEditor } from './ui/rautomodCustomEditor';
+import { openRautomodManager, registerRautomodManagerView } from './ui/rautomodManagerView';
 import path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -82,6 +84,18 @@ export function activate(context: vscode.ExtensionContext) {
 	const openLogCommand = vscode.commands.registerCommand(
 		"rustautomod.openLog",
 		() => openAutomodLog()
+	);
+	const openVisualRautomodCommand = vscode.commands.registerCommand(
+		"rustautomod.openRautomodVisual",
+		(resource?: vscode.Uri) => openRautomodVisual(resource)
+	);
+	const openRawRautomodCommand = vscode.commands.registerCommand(
+		"rustautomod.openRautomodRaw",
+		(resource?: vscode.Uri) => openRautomodRaw(resource)
+	);
+	const openManagerCommand = vscode.commands.registerCommand(
+		"rustautomod.openManager",
+		() => openRautomodManager(context)
 	);
 	const configChangeListener = vscode.workspace.onDidChangeConfiguration(event => {
 		modVisibilityController.handleConfigurationChange(event);
@@ -309,6 +323,9 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(ignoreCommand);
 	context.subscriptions.push(scaffoldCommand);
 	context.subscriptions.push(openLogCommand);
+	context.subscriptions.push(openVisualRautomodCommand);
+	context.subscriptions.push(openRawRautomodCommand);
+	context.subscriptions.push(openManagerCommand);
 	context.subscriptions.push(configChangeListener);
 	context.subscriptions.push(workspaceFoldersChangeListener);
 	context.subscriptions.push(automodRuntime);
@@ -317,6 +334,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(completionProvider);
 	context.subscriptions.push(rautomodCodeActions);
 	context.subscriptions.push(formattingProvider);
+	context.subscriptions.push(registerRautomodCustomEditor(context));
+	context.subscriptions.push(registerRautomodManagerView(context));
 
 	context.subscriptions.push(new vscode.Disposable(() => {
 		if (debounceTimeout) {

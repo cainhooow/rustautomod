@@ -3,7 +3,7 @@
   "displayName": "Rust AutoMod",
   "icon": "assets/automodlogo.png",
   "description": "Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "Cainhooow - Caio Augusto",
   "publisher": "drkryz",
   "engines": {
@@ -22,6 +22,8 @@
     "onLanguage:rust",
     "onFileSystem:*.rs",
     "workspaceContains:**/Cargo.toml",
+    "onCustomEditor:rustautomod.rautomodEditor",
+    "onView:rustautomod.managerView",
     "onCommand:rustautomod.toggleHideModRs",
     "onCommand:rustautomod.hideThisModRs",
     "onCommand:rustautomod.restoreHiddenModRs",
@@ -32,7 +34,10 @@
     "onCommand:rustautomod.showEffectiveConfig",
     "onCommand:rustautomod.ignorePathInRautomod",
     "onCommand:rustautomod.scaffoldRautomod",
-    "onCommand:rustautomod.openLog"
+    "onCommand:rustautomod.openLog",
+    "onCommand:rustautomod.openRautomodVisual",
+    "onCommand:rustautomod.openRautomodRaw",
+    "onCommand:rustautomod.openManager"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -60,6 +65,36 @@
         "path": "./syntaxes/rautomod.tmLanguage.json"
       }
     ],
+    "customEditors": [
+      {
+        "viewType": "rustautomod.rautomodEditor",
+        "displayName": "Rust AutoMod Visual Editor",
+        "selector": [
+          {
+            "filenamePattern": ".rautomod"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rustautomodWorkbench",
+          "title": "Rust AutoMod",
+          "icon": "assets/rautomod-manager.svg"
+        }
+      ]
+    },
+    "views": {
+      "rustautomodWorkbench": [
+        {
+          "type": "webview",
+          "id": "rustautomod.managerView",
+          "name": "AutoMod Manager"
+        }
+      ]
+    },
     "menus": {
       "commandPalette": [
         {
@@ -88,6 +123,15 @@
         },
         {
           "command": "rustautomod.openLog"
+        },
+        {
+          "command": "rustautomod.openRautomodVisual"
+        },
+        {
+          "command": "rustautomod.openRautomodRaw"
+        },
+        {
+          "command": "rustautomod.openManager"
         }
       ],
       "explorer/context": [
@@ -130,6 +174,23 @@
           "command": "rustautomod.scaffoldRautomod",
           "when": "explorerResourceIsFolder",
           "group": "navigation@97"
+        },
+        {
+          "command": "rustautomod.openRautomodVisual",
+          "when": "resourceFilename == .rautomod",
+          "group": "navigation@98"
+        },
+        {
+          "command": "rustautomod.openRautomodRaw",
+          "when": "resourceFilename == .rautomod",
+          "group": "navigation@99"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "rustautomod.openManager",
+          "when": "view == rustautomod.managerView",
+          "group": "navigation"
         }
       ]
     },
@@ -178,6 +239,18 @@
       {
         "title": "Open Rust AutoMod Log",
         "command": "rustautomod.openLog"
+      },
+      {
+        "title": "Open .rautomod Visual",
+        "command": "rustautomod.openRautomodVisual"
+      },
+      {
+        "title": "Open .rautomod Raw",
+        "command": "rustautomod.openRautomodRaw"
+      },
+      {
+        "title": "Open Rust AutoMod Manager",
+        "command": "rustautomod.openManager"
       }
     ],
     "configuration": {
