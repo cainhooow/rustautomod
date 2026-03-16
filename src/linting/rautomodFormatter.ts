@@ -50,12 +50,22 @@ function formatAssignmentLine(line: string): string {
 
     switch (key) {
         case "pattern":
+        case "exclude":
+        case "extends":
+        case "group_order":
             return `${key}=${normalizeSimpleCommaList(rawValue)}`;
         case "cfg":
             return `${key}=${normalizeCfgList(rawValue)}`;
         case "visibility":
         case "sort":
         case "fmt":
+        case "target":
+        case "reexport":
+        case "blank_lines":
+        case "strict":
+        case "schema_version":
+        case "header":
+        case "generated_comment":
             return `${key}=${rawValue}`;
         default:
             return `${key}=${rawValue}`;

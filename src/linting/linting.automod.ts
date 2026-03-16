@@ -1,6 +1,6 @@
 import path from "path";
 import * as vscode from "vscode";
-import { smartSplitCfg } from "../automod/cfgUtils";
+import { parseRautomodDocument } from "../automod/automodConfigFile";
 
 export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection: vscode.DiagnosticCollection) {
     if (path.basename(doc.fileName) !== ".rautomod") {
@@ -8,46 +8,25 @@ export function validateRautomod(doc: vscode.TextDocument, diagnosticCollection:
         return;
     }
 
-    const diagnostics: vscode.Diagnostic[] = [];
-    const lines = doc.getText().split(/\r?\n/);
-    lines.forEach((line, index) => {
-        const trimmed = line.trim();
-        if (trimmed === "" || trimmed.startsWith("#")) {return;}
+    const parsed = parseRautomodDocument(doc.getText(), doc.fileName);
+    const diagnostics = parsed.diagnostics
+        .filter(diagnostic => parsed.strictMode !== "off" || diagnostic.severity === "error")
+        .map(diagnostic => {
+            const severity = diagnostic.severity === "error"
+                ? vscode.DiagnosticSeverity.Error
+                : parsed.strictMode === "error"
+                    ? vscode.DiagnosticSeverity.Error
+                    : vscode.DiagnosticSeverity.Warning;
 
-        if (/^visibility\s*=/.test(trimmed)) {
-            if (!/^visibility\s*=\s*(pub|private)$/.test(trimmed)) {
-                diagnostics.push(createDiagnostic(index, "visibility accepts only 'pub' or 'private'"));
-            }
-        } else if (/^sort\s*=/.test(trimmed)) {
-            if (!/^sort\s*=\s*(alpha|none)$/.test(trimmed)) {
-                diagnostics.push(createDiagnostic(index, "sort accepts only 'alpha' or 'none'"));
-            }
-        } else if (/^pattern\s*=/.test(trimmed)) {
-            const values = trimmed.split("=")[1].split(",").map(s => s.trim());
-            if (values.some(v => v === "")) {
-                diagnostics.push(createDiagnostic(index, "pattern values cannot be empty"));
-            }
-        } else if (/^cfg\s*=/.test(trimmed)) {
-            const values = smartSplitCfg(trimmed.split("=")[1]);
-            if (values.some(v => v === "")) {
-                diagnostics.push(createDiagnostic(index, "cfg values cannot be empty"));
-            }
-        } else if (/^fmt\s*=/.test(trimmed)) {
-            if (!/^fmt\s*=\s*(enabled|disabled)$/.test(trimmed)) {
-                diagnostics.push(createDiagnostic(index, "fmt accepts only 'enabled' or 'disabled'"));
-            }
-        } else {
-            diagnostics.push(createDiagnostic(index, "invalid line in .rautomod"));
-        }
-    });
+            const createdDiagnostic = new vscode.Diagnostic(
+                new vscode.Range(diagnostic.line, 0, diagnostic.line, Number.MAX_VALUE),
+                diagnostic.message,
+                severity
+            );
+            createdDiagnostic.code = diagnostic.code;
+            createdDiagnostic.source = "rustautomod";
+            return createdDiagnostic;
+        });
 
     diagnosticCollection.set(doc.uri, diagnostics);
-}
-
-function createDiagnostic(line: number, message: string): vscode.Diagnostic {
-    return new vscode.Diagnostic(
-        new vscode.Range(line, 0, line, Number.MAX_VALUE),
-        message,
-        vscode.DiagnosticSeverity.Error
-    );
 }

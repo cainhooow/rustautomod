@@ -2,6 +2,37 @@
 
 ## [Released]
 
+### 1.4.0
+
+This release expands Rust AutoMod from a module-sync helper into a more complete workflow tool, with preview, undo, regeneration, richer `.rautomod` rules, quick fixes, and better inspection/debugging commands.
+
+#### Added
+
+- Preview/dry-run support with diff output before applying automod changes.
+- Undo for the last Rust AutoMod batch.
+- Regenerate command for rebuilding module registrations in a folder or workspace.
+- Explain command for showing why a Rust file maps to a given registration target and snippet.
+- Effective-config inspector for Rust files.
+- Structured Rust AutoMod output channel logging.
+- Explorer command to ignore files or folders by writing `exclude=` rules into `.rautomod`.
+- Scaffold command to create a starter `.rautomod`.
+- Quick fixes for invalid `.rautomod` keys and a quick action to insert common missing keys.
+- Integration coverage for scaffold, ignore, preview, regenerate, undo, and effective-config inspection.
+
+#### Changed
+
+- `.rautomod` now supports `exclude`, `extends`, `target`, `group_order`, `blank_lines`, `reexport`, `header`, `generated_comment`, `strict`, and `schema_version`.
+- `pattern` rules now support negation with `!`.
+- Visibility now supports `pub(crate)` and `pub(super)`.
+- Sorting now supports `alpha_case_insensitive`, `pub_first`, and `cfg_first`.
+- The automod runtime now applies batch operations through a shared preview/history/logging pipeline.
+
+#### Fixed
+
+- Rename handling now updates module declarations instead of only re-sorting the target file.
+- Conflict detection warns before Rust AutoMod overwrites a managed declaration area that changed manually.
+- Regeneration and undo flows are now covered by extension integration tests.
+
 ### 1.3.0
 
 This release adds smarter `mod.rs` visibility controls, improves safety around ignored paths like `.git`, and refactors the extension internals for better maintainability and testability.

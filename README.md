@@ -4,17 +4,53 @@
 
 Art produced by [Saki](https://instagram.com/sak1_sk)
 
-Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smarter `mod.rs` visibility controls inside the VS Code Explorer.
+Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports richer `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smart `mod.rs` visibility controls plus preview, undo, regenerate, explain, and config-inspection workflows inside VS Code.
+
+## Documentation
+
+- For practical scenarios and copy-paste examples, see [docs/USE_CASES.md](docs/USE_CASES.md).
+- For a more detailed `.rautomod` reference, see [docs/RAUTOMOD_REFERENCE.md](docs/RAUTOMOD_REFERENCE.md).
 
 ## What it does
 
 - Creates `mod.rs` when a new Rust file appears in a module folder.
 - Updates `mod.rs`, `lib.rs`, or `main.rs` when modules are added or removed.
 - Supports nested folders and parent module registration.
-- Supports `.rautomod` rules for `visibility`, `sort`, `cfg`, `pattern`, and `fmt`.
+- Supports `.rautomod` rules for visibility, sorting, target selection, excludes, inheritance, generated comments, strict validation, and more.
 - Can run `cargo fmt` after updates.
 - Adds a dedicated file icon, syntax highlighting, linting, completions, and formatting for `.rautomod`.
+- Supports preview/dry run, undo of the last automod action, workspace or folder regeneration, and structured logging.
+- Can explain why a file was registered a certain way and show the effective config that won for a Rust file.
+- Can scaffold a `.rautomod` file and ignore files or folders from the Explorer.
 - Hides `mod.rs` more intelligently in the Explorer.
+
+## How Rust AutoMod decides where to write
+
+When Rust AutoMod reacts to a file or folder, it follows this general order:
+
+1. It finds the effective `.rautomod` rule for the file, including inherited rules from `extends=...`.
+2. It checks whether the file is ignored by `exclude=` or by a negative `pattern=!something`.
+3. It resolves the target file:
+   - `target=auto`: tries the crate root target when appropriate, otherwise local `mod.rs`
+   - `target=mod.rs`: always writes to the local folder `mod.rs`
+   - `target=lib.rs`: writes to the nearest `lib.rs`
+   - `target=main.rs`: writes to the nearest `main.rs`
+4. It generates the declaration block according to `visibility`, `cfg`, `reexport`, `group_order`, and `blank_lines`.
+5. It sorts or reorders the managed block according to `sort`.
+
+If `strict=error` and the `.rautomod` file has blocking diagnostics, Rust AutoMod stops before applying those changes.
+
+## New automod workflow features
+
+- `Preview AutoMod Changes`: opens a dry-run summary and diff before writing.
+- `Undo Last AutoMod Action`: restores the previous automod batch without relying on editor undo history.
+- `Regenerate Rust Modules`: rebuilds missing registrations and removes stale ones for a folder or workspace.
+- `Explain AutoMod Decision`: shows target file, winning rule, ordering, and generated snippet preview for a Rust file.
+- `Show Effective AutoMod Config`: opens the resolved config, matched patterns, diagnostics, and source `.rautomod`.
+- `Open Rust AutoMod Log`: opens the structured output channel with automod activity.
+- `Ignore in .rautomod`: prepends an `exclude=` rule for a file or folder from the Explorer.
+- `Scaffold .rautomod`: creates a starter config with the new keys and examples.
+- Conflict detection warns when Rust AutoMod notices manual edits in the managed declaration area before writing again.
 
 ## New mod.rs visibility features
 
@@ -59,12 +95,63 @@ If you run it from the Command Palette, the extension shows a picker with the ma
 - `Toggle Smart mod.rs Hiding`
 - `Hide This mod.rs`
 - `Restore Hidden mod.rs`
+- `Preview AutoMod Changes`
+- `Regenerate Rust Modules`
+- `Undo Last AutoMod Action`
+- `Explain AutoMod Decision`
+- `Show Effective AutoMod Config`
+- `Ignore in .rautomod`
+- `Scaffold .rautomod`
+- `Open Rust AutoMod Log`
+
+## Command workflows
+
+### Preview before writing
+
+Use `Preview AutoMod Changes` on a Rust file or folder when you want to inspect what would change first. Rust AutoMod opens a summary plus a diff of the first affected file without writing to the workspace.
+
+If you want this behavior automatically before every write, enable the setting:
+
+```json
+{
+  "rustautomod.previewBeforeApply": true
+}
+```
+
+### Rebuild stale module trees
+
+Use `Regenerate Rust Modules` when:
+
+- you moved many files outside VS Code
+- a branch switch left stale declarations behind
+- you want to rebuild a whole folder after changing `.rautomod`
+
+This command scans the selected folder or workspace, re-adds missing declarations, and removes stale ones.
+
+### Explain and inspect
+
+Use these two commands together when a result looks surprising:
+
+- `Explain AutoMod Decision`: shows why Rust AutoMod chose a target and what lines it wants to generate
+- `Show Effective AutoMod Config`: shows the winning rule, matched patterns, diagnostics, and config source
+
+### Ignore noisy paths
+
+Right-click a file or folder and use `Ignore in .rautomod` to prepend an `exclude=` rule to the workspace `.rautomod`. This is especially useful for:
+
+- generated code
+- fixtures
+- snapshots
+- migration folders
+- vendored examples
 
 ## .rautomod configuration
 
 Place a `.rautomod` file at the root of your Rust project, or inside a subfolder, to customize behavior.
 
-The file is now recognized as its own VS Code language, with a dedicated Explorer icon, colors for comments, keys, operators, known values, `cfg(...)` expressions, and list entries. You can also run `Format Document` on `.rautomod` files to normalize spacing, assignment style, blank lines, and comma-separated lists.
+The file is now recognized as its own VS Code language, with a dedicated Explorer icon, colors for comments, keys, operators, known values, `cfg(...)` expressions, and list entries. You can run `Format Document` on `.rautomod` files to normalize spacing, assignment style, blank lines, and comma-separated lists, and the extension now provides quick fixes for invalid keys and common missing entries.
+
+For a line-by-line explanation of every key, precedence rule, and matching behavior, see [docs/RAUTOMOD_REFERENCE.md](docs/RAUTOMOD_REFERENCE.md).
 
 Example:
 
@@ -72,28 +159,118 @@ Example:
 visibility=pub
 sort=alpha
 fmt=enabled
+target=auto
 ```
 
 Available keys:
 
-- `visibility=pub|private`
-- `sort=alpha|none`
+- `visibility=pub|private|pub(crate)|pub(super)`
+- `sort=alpha|alpha_case_insensitive|none|pub_first|cfg_first`
 - `fmt=enabled|disabled`
+- `target=auto|mod.rs|lib.rs|main.rs`
+- `exclude=generated/**,tests/**`
 - `cfg=feature="serde",all(unix, target_pointer_width = "64")`
-- `pattern=utils,helpers,internal`
+- `pattern=utils,helpers,!tests`
+- `group_order=use,cfg,pub_mod,mod,pub_use`
+- `blank_lines=0|1|2`
+- `reexport=enabled|disabled`
+- `header=generated by rustautomod`
+- `generated_comment=managed by rustautomod`
+- `strict=off|warn|error`
+- `schema_version=1`
+- `extends=./shared.rautomod`
 
-Example with patterns:
+Example with inheritance, excludes, and generated comments:
 
 ```rautomod
-visibility=private
-sort=none
-fmt=disabled
-pattern=utils,helpers
-
+schema_version=1
+strict=warn
+extends=./shared.rautomod
 visibility=pub
 sort=alpha
 fmt=enabled
+target=auto
+group_order=use,cfg,pub_mod,mod,pub_use
+blank_lines=1
+reexport=disabled
+generated_comment=managed by rustautomod
+
+pattern=internal,!tests
+visibility=private
+sort=alpha_case_insensitive
+exclude=generated/**
+reexport=enabled
 ```
+
+### Rule behavior
+
+- `pattern` supports negative entries with `!`.
+- `exclude` marks matching files or folders as ignored by Rust AutoMod.
+- `extends` resolves relative to the current `.rautomod`.
+- `target` lets a rule choose `mod.rs`, `lib.rs`, `main.rs`, or automatic resolution.
+- `group_order` controls how managed declarations are grouped relative to `use`, `cfg`, public/private modules, and generated `pub use`.
+- `blank_lines` controls spacing between managed groups.
+- `strict=error` makes validation strict enough for diagnostics to block automod actions that rely on the config file.
+
+## Example gallery
+
+Here are a few common shapes that Rust AutoMod handles well:
+
+### Simple library crate
+
+```text
+src/
+  lib.rs
+  api.rs
+  config.rs
+```
+
+With `target=auto`, Rust AutoMod can keep `src/lib.rs` updated with:
+
+```rust
+pub mod api;
+pub mod config;
+```
+
+### Folder with private internals
+
+```rautomod
+pattern=internal,!tests
+visibility=private
+sort=alpha_case_insensitive
+```
+
+This is useful when you want helper folders to stay internal even if the rest of the crate is public.
+
+### Platform-specific module declarations
+
+```rautomod
+pattern=platform
+cfg=unix,windows
+visibility=pub
+```
+
+This generates `#[cfg(...)]` attributes before the managed declarations for matching modules.
+
+### Generated folders you never want touched
+
+```rautomod
+exclude=generated/**,fixtures/**
+```
+
+Rust AutoMod resolves the config but skips writes for matching files and folders.
+
+### Re-export based module surfaces
+
+```rautomod
+pattern=prelude
+reexport=enabled
+generated_comment=managed by rustautomod
+```
+
+This is handy for folders where the module file should both declare and re-export submodules.
+
+For more complete, real-world examples, see [docs/USE_CASES.md](docs/USE_CASES.md).
 
 ## Installation
 
@@ -107,7 +284,10 @@ fmt=enabled
 1. Open a Rust project with a `Cargo.toml`.
 2. Optionally add a `.rautomod` file.
 3. Create or delete `.rs` files inside your module folders.
-4. Use the Explorer commands when you want to hide or restore `mod.rs`.
+4. Use `Preview AutoMod Changes` when you want a dry run and diff.
+5. Use `Regenerate Rust Modules` to rebuild a folder or workspace.
+6. Use the Explorer commands when you want to hide or restore `mod.rs`, ignore paths, or scaffold `.rautomod`.
+7. Use `Explain AutoMod Decision` and `Show Effective AutoMod Config` when you want to understand why a file was handled a certain way.
 
 ## Internal structure
 
@@ -115,11 +295,13 @@ The extension was refactored so each responsibility lives in a smaller module.
 
 ### Automod core
 
-- `src/automod/automodModFile.ts`: orchestration for create, delete, and rename flows
+- `src/automod/automodModFile.ts`: orchestration for create, delete, rename, regenerate, preview, explain, ignore, and scaffold flows
+- `src/automod/automodRuntime.ts`: shared runtime for preview, diff, undo history, conflict detection, and batch application
 - `src/automod/modDeclarations.ts`: parsing and generation of module declaration blocks
 - `src/automod/modContentEditor.ts`: insertion, removal, and sorting of declaration content
 - `src/automod/modFileSystem.ts`: async file-system helpers and target-file resolution
 - `src/automod/cargoFmt.ts`: isolated `cargo fmt` integration
+- `src/automod/automodConfigFile.ts`: `.rautomod` parsing, inheritance, pattern matching, and effective-config resolution
 
 ### Visibility and workspace state
 
@@ -127,6 +309,15 @@ The extension was refactored so each responsibility lives in a smaller module.
 - `src/workbench/modVisibility.ts`: index-like `mod.rs` detection and exclude reconciliation
 - `src/workbench/modVisibilityWorkspaceService.ts`: per-workspace visibility persistence and `files.exclude` sync
 - `src/workspace/workspaceStateService.ts`: generic workspace-scoped state storage
+- `src/workspace/automodLogger.ts`: structured output channel logging
+- `src/workspace/automodHistoryService.ts`: undo stack for automod batches
+
+### .rautomod editor support
+
+- `src/linting/linting.automod.ts`: `.rautomod` diagnostics and strict-mode severity handling
+- `src/linting/linting.codeActions.ts`: quick fixes for invalid keys and common missing entries
+- `src/linting/linting.completion.ts`: completions for the expanded `.rautomod` key set
+- `src/linting/linting.formatting.ts`: document formatting provider for `.rautomod`
 
 ## Development
 
@@ -144,14 +335,18 @@ The project now includes:
 - unit tests for visibility heuristics
 - unit tests for `mod.rs` content editing
 - unit tests for `.rautomod` formatting
+- config-resolution tests for `.rautomod` inheritance, negation, and excludes
 - extension integration tests for Explorer commands and `files.exclude`
 - extension integration tests for `.rautomod` language detection and formatting
+- extension integration tests for scaffold, ignore, preview, regenerate, undo, and effective config inspection
 - the existing debounce and rename-detection suites
 
 ## Notes
 
 - `fmt=enabled` requires `cargo` and `rustfmt` to be available in your environment.
 - If no `.rautomod` file is found, Rust Automod falls back to VS Code settings under `rustautomod.*`.
+- `target=lib.rs` and `target=main.rs` are most useful for crate-root style rules.
 - The extension ignores invalid or unsafe paths such as `.git`, `target`, `node_modules`, and similar folders.
+- Some icon themes may override the default `.rautomod` icon contributed by the extension.
 
 Contributions, issues, and feature requests are welcome.

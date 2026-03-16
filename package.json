@@ -3,7 +3,7 @@
   "displayName": "Rust AutoMod",
   "icon": "assets/automodlogo.png",
   "description": "Rust Automod is a Visual Studio Code extension that automates the management of mod.rs files in Rust projects. It eliminates the repetitive task of manually creating and maintaining module declarations, keeping your Rust project structure clean and organized.",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "author": "Cainhooow - Caio Augusto",
   "publisher": "drkryz",
   "engines": {
@@ -24,7 +24,15 @@
     "workspaceContains:**/Cargo.toml",
     "onCommand:rustautomod.toggleHideModRs",
     "onCommand:rustautomod.hideThisModRs",
-    "onCommand:rustautomod.restoreHiddenModRs"
+    "onCommand:rustautomod.restoreHiddenModRs",
+    "onCommand:rustautomod.previewAutomod",
+    "onCommand:rustautomod.regenerateModules",
+    "onCommand:rustautomod.undoLastAutomodAction",
+    "onCommand:rustautomod.explainAutomod",
+    "onCommand:rustautomod.showEffectiveConfig",
+    "onCommand:rustautomod.ignorePathInRautomod",
+    "onCommand:rustautomod.scaffoldRautomod",
+    "onCommand:rustautomod.openLog"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -59,6 +67,27 @@
         },
         {
           "command": "rustautomod.restoreHiddenModRs"
+        },
+        {
+          "command": "rustautomod.previewAutomod"
+        },
+        {
+          "command": "rustautomod.regenerateModules"
+        },
+        {
+          "command": "rustautomod.undoLastAutomodAction"
+        },
+        {
+          "command": "rustautomod.explainAutomod"
+        },
+        {
+          "command": "rustautomod.showEffectiveConfig"
+        },
+        {
+          "command": "rustautomod.scaffoldRautomod"
+        },
+        {
+          "command": "rustautomod.openLog"
         }
       ],
       "explorer/context": [
@@ -71,6 +100,36 @@
           "command": "rustautomod.restoreHiddenModRs",
           "when": "resourceFilename == mod.rs",
           "group": "navigation@91"
+        },
+        {
+          "command": "rustautomod.previewAutomod",
+          "when": "resourceExtname == .rs || explorerResourceIsFolder",
+          "group": "navigation@92"
+        },
+        {
+          "command": "rustautomod.regenerateModules",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@93"
+        },
+        {
+          "command": "rustautomod.explainAutomod",
+          "when": "resourceExtname == .rs",
+          "group": "navigation@94"
+        },
+        {
+          "command": "rustautomod.showEffectiveConfig",
+          "when": "resourceExtname == .rs",
+          "group": "navigation@95"
+        },
+        {
+          "command": "rustautomod.ignorePathInRautomod",
+          "when": "resourceExtname == .rs || explorerResourceIsFolder",
+          "group": "navigation@96"
+        },
+        {
+          "command": "rustautomod.scaffoldRautomod",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@97"
         }
       ]
     },
@@ -87,6 +146,38 @@
       {
         "title": "Restore Hidden mod.rs",
         "command": "rustautomod.restoreHiddenModRs"
+      },
+      {
+        "title": "Preview AutoMod Changes",
+        "command": "rustautomod.previewAutomod"
+      },
+      {
+        "title": "Regenerate Rust Modules",
+        "command": "rustautomod.regenerateModules"
+      },
+      {
+        "title": "Undo Last AutoMod Action",
+        "command": "rustautomod.undoLastAutomodAction"
+      },
+      {
+        "title": "Explain AutoMod Decision",
+        "command": "rustautomod.explainAutomod"
+      },
+      {
+        "title": "Show Effective AutoMod Config",
+        "command": "rustautomod.showEffectiveConfig"
+      },
+      {
+        "title": "Ignore in .rautomod",
+        "command": "rustautomod.ignorePathInRautomod"
+      },
+      {
+        "title": "Scaffold .rautomod",
+        "command": "rustautomod.scaffoldRautomod"
+      },
+      {
+        "title": "Open Rust AutoMod Log",
+        "command": "rustautomod.openLog"
       }
     ],
     "configuration": {
@@ -96,19 +187,24 @@
           "type": "string",
           "enum": [
             "pub",
-            "private"
+            "private",
+            "pub(crate)",
+            "pub(super)"
           ],
           "default": "pub",
-          "description": "Define rust modules create with public(pub mod) or private(mod)"
+          "description": "Define generated Rust module visibility."
         },
         "rustautomod.sort": {
           "type": "string",
           "enum": [
             "alpha",
-            "none"
+            "alpha_case_insensitive",
+            "none",
+            "pub_first",
+            "cfg_first"
           ],
           "default": "alpha",
-          "description": "Define rust module organization"
+          "description": "Define generated Rust module organization."
         },
         "rustautomod.fmt": {
           "type": "string",
@@ -117,7 +213,12 @@
             "disabled"
           ],
           "default": "disabled",
-          "description": "Define whether you want formatting with cargo fmt after deleting/creating mod.rs"
+          "description": "Define whether Rust AutoMod runs cargo fmt after edits."
+        },
+        "rustautomod.previewBeforeApply": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a diff preview and ask for confirmation before Rust AutoMod writes changes."
         }
       }
     }

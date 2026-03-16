@@ -43,7 +43,7 @@
               ]
             }
           },
-          "match": "^\\s*(visibility|sort|fmt|pattern|cfg)\\s*(=)\\s*(.*?)\\s*$"
+          "match": "^\\s*(visibility|sort|fmt|target|pattern|exclude|cfg|group_order|blank_lines|reexport|header|generated_comment|strict|schema_version|extends)\\s*(=)\\s*(.*?)\\s*$"
         }
       ]
     },
@@ -51,7 +51,7 @@
       "patterns": [
         {
           "name": "constant.language.rautomod",
-          "match": "\\b(?:pub|private|alpha|none|enabled|disabled)\\b"
+          "match": "\\b(?:pub|private|pub\\(crate\\)|pub\\(super\\)|alpha|alpha_case_insensitive|none|pub_first|cfg_first|enabled|disabled|auto|mod\\.rs|lib\\.rs|main\\.rs|off|warn|error)\\b"
         }
       ]
     },

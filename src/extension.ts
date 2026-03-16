@@ -1,8 +1,23 @@
 import * as vscode from 'vscode';
 import { validateRautomod } from './linting/linting.automod';
 import { completionProvider } from './linting/linting.completion';
+import { rautomodCodeActions } from './linting/linting.codeActions';
 import { formattingProvider } from './linting/linting.formatting';
-import { handleFileDelete, handleFileRename, handleNewFile } from './automod/automodModFile';
+import {
+	configureAutomodRuntime,
+	explainAutomod,
+	handleFileDelete,
+	handleFileRename,
+	handleNewFile,
+	ignorePathInRautomod,
+	openAutomodLog,
+	previewAutomod,
+	regenerateModules,
+	scaffoldRautomod,
+	showEffectiveConfig,
+	undoLastAutomodAction
+} from './automod/automodModFile';
+import { AutomodRuntime } from './automod/automodRuntime';
 import { isValidRustPath } from './utils/pathValidator';
 import { ModVisibilityController } from './workbench/control';
 import path from 'path';
@@ -10,6 +25,8 @@ import path from 'path';
 export function activate(context: vscode.ExtensionContext) {
 	console.log("RUST AUTOMOD INIT");
 
+	const automodRuntime = new AutomodRuntime();
+	configureAutomodRuntime(automodRuntime);
 	const modVisibilityController = new ModVisibilityController(context);
 	
 	// Create a watcher that excludes known problematic directories
@@ -34,6 +51,38 @@ export function activate(context: vscode.ExtensionContext) {
 		"rustautomod.restoreHiddenModRs",
 		(resource?: vscode.Uri) => modVisibilityController.restoreHiddenModRs(resource)
 	);
+	const previewCommand = vscode.commands.registerCommand(
+		"rustautomod.previewAutomod",
+		(resource?: vscode.Uri) => previewAutomod(resource)
+	);
+	const regenerateCommand = vscode.commands.registerCommand(
+		"rustautomod.regenerateModules",
+		(resource?: vscode.Uri) => regenerateModules(resource)
+	);
+	const undoCommand = vscode.commands.registerCommand(
+		"rustautomod.undoLastAutomodAction",
+		() => undoLastAutomodAction()
+	);
+	const explainCommand = vscode.commands.registerCommand(
+		"rustautomod.explainAutomod",
+		(resource?: vscode.Uri) => explainAutomod(resource)
+	);
+	const effectiveConfigCommand = vscode.commands.registerCommand(
+		"rustautomod.showEffectiveConfig",
+		(resource?: vscode.Uri) => showEffectiveConfig(resource)
+	);
+	const ignoreCommand = vscode.commands.registerCommand(
+		"rustautomod.ignorePathInRautomod",
+		(resource?: vscode.Uri) => ignorePathInRautomod(resource)
+	);
+	const scaffoldCommand = vscode.commands.registerCommand(
+		"rustautomod.scaffoldRautomod",
+		(resource?: vscode.Uri) => scaffoldRautomod(resource)
+	);
+	const openLogCommand = vscode.commands.registerCommand(
+		"rustautomod.openLog",
+		() => openAutomodLog()
+	);
 	const configChangeListener = vscode.workspace.onDidChangeConfiguration(event => {
 		modVisibilityController.handleConfigurationChange(event);
 	});
@@ -43,6 +92,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.workspace.onDidOpenTextDocument(doc => validateRautomod(doc, diagnosticCollection));
 	vscode.workspace.onDidSaveTextDocument(doc => validateRautomod(doc, diagnosticCollection));
+	vscode.workspace.onDidChangeTextDocument(event => validateRautomod(event.document, diagnosticCollection));
 
 	const pendingCreatedUris = new Set<string>();
 	const pendingDeletedUris = new Set<string>();
@@ -251,11 +301,21 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(toggleHide);
 	context.subscriptions.push(hideThisMod);
 	context.subscriptions.push(restoreHiddenMod);
+	context.subscriptions.push(previewCommand);
+	context.subscriptions.push(regenerateCommand);
+	context.subscriptions.push(undoCommand);
+	context.subscriptions.push(explainCommand);
+	context.subscriptions.push(effectiveConfigCommand);
+	context.subscriptions.push(ignoreCommand);
+	context.subscriptions.push(scaffoldCommand);
+	context.subscriptions.push(openLogCommand);
 	context.subscriptions.push(configChangeListener);
 	context.subscriptions.push(workspaceFoldersChangeListener);
+	context.subscriptions.push(automodRuntime);
 	context.subscriptions.push(modVisibilityController);
 	context.subscriptions.push(diagnosticCollection);
 	context.subscriptions.push(completionProvider);
+	context.subscriptions.push(rautomodCodeActions);
 	context.subscriptions.push(formattingProvider);
 
 	context.subscriptions.push(new vscode.Disposable(() => {
