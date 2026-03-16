@@ -159,6 +159,32 @@ cfg=feature="serde",all(unix, target_pointer_width = "64")
         assert.ok(content.includes("group_order=use,cfg,pub_mod,mod,pub_use"));
     });
 
+    test("opens .rautomod in the custom Studio editor", async function () {
+        this.timeout(10000);
+
+        const configPath = path.join(workspacePath, ".rautomod");
+        await fs.writeFile(configPath, "schema_version=1\nstrict=warn\nvisibility=pub\n", "utf8");
+
+        await vscode.commands.executeCommand("rustautomod.openRautomodVisual", vscode.Uri.file(configPath));
+
+        await waitForCondition(() => {
+            const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+            return activeTab?.input instanceof vscode.TabInputCustom
+                && activeTab.input.viewType === "rustautomod.rautomodEditor";
+        }, 5000, 100);
+    });
+
+    test("opens the Rust AutoMod manager panel", async function () {
+        this.timeout(10000);
+
+        await vscode.commands.executeCommand("rustautomod.openManager");
+
+        await waitForCondition(() => {
+            const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+            return tabs.some(tab => tab.input instanceof vscode.TabInputWebview);
+        }, 5000, 100);
+    });
+
     test("ignores a folder by prepending an exclude rule to .rautomod", async function () {
         this.timeout(10000);
 

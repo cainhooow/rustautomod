@@ -5,6 +5,7 @@ import {
     serializeViewModelToRawText,
     RautomodDocumentViewModel
 } from "./rautomodState";
+import { collectRautomodEditorInsights } from "./rautomodStudioService";
 import { getRautomodEditorHtml } from "./rautomodWebviewTemplates";
 
 export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProvider {
@@ -17,21 +18,33 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
         webviewPanel: vscode.WebviewPanel
     ): Promise<void> {
         let isWebviewReady = false;
+        let isDisposed = false;
 
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [this.context.extensionUri]
         };
 
-        const updateWebview = async () => {
-            if (!isWebviewReady) {
+        const updateWebview = async (): Promise<void> => {
+            if (!isWebviewReady || isDisposed) {
                 return;
             }
 
-            await webviewPanel.webview.postMessage({
-                type: "setState",
-                value: createRautomodDocumentViewModel(document)
-            });
+            try {
+                await webviewPanel.webview.postMessage({
+                    type: "setState",
+                    value: createRautomodDocumentViewModel(document)
+                });
+
+                await webviewPanel.webview.postMessage({
+                    type: "setInsights",
+                    value: await collectRautomodEditorInsights(document.uri, document.getText())
+                });
+            } catch (error) {
+                if (!isDisposed) {
+                    console.warn("RUST AUTOMOD STUDIO: Failed to update editor webview.", error);
+                }
+            }
         };
 
         const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(event => {
@@ -41,6 +54,7 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
         });
 
         webviewPanel.onDidDispose(() => {
+            isDisposed = true;
             changeDocumentSubscription.dispose();
         });
 
@@ -62,8 +76,31 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
                         rawText: formatRautomod(String(message.rawText ?? ""))
                     });
                     return;
+                case "refreshInsights":
+                    await webviewPanel.webview.postMessage({
+                        type: "setInsights",
+                        value: await collectRautomodEditorInsights(
+                            document.uri,
+                            String(message.rawText ?? document.getText()),
+                            typeof message.matchPath === "string" ? message.matchPath : undefined
+                        )
+                    });
+                    return;
                 case "openRaw":
                     await openRautomodRaw(document.uri);
+                    return;
+                case "openFile":
+                    if (message.uri) {
+                        await vscode.window.showTextDocument(vscode.Uri.parse(String(message.uri)));
+                    }
+                    return;
+                case "revealFolder":
+                    if (message.uri) {
+                        await vscode.commands.executeCommand("revealInExplorer", vscode.Uri.parse(String(message.uri)));
+                    }
+                    return;
+                case "logWebviewError":
+                    console.error("RUST AUTOMOD STUDIO WEBVIEW ERROR:", message.context, message.message);
                     return;
             }
         });

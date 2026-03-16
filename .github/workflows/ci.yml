@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Compile
+        run: yarn compile
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Unit tests
+        run: yarn test:unit
+
+      - name: Extension tests
+        run: yarn test
+
+      - name: Generate Studio screenshots
+        run: yarn screenshots:studio
+
+      - name: Upload Studio screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-screenshots
+          path: assets/screenshots/*.png

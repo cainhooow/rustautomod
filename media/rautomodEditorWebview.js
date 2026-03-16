@@ -1,15 +1,36 @@
 (function () {
     const vscode = acquireVsCodeApi();
     const root = document.getElementById("root");
+    const restoredState = vscode.getState() || {};
+
+    const VALID_VISIBILITY = ["pub", "private", "pub(crate)", "pub(super)"];
+    const VALID_SORT = ["alpha", "alpha_case_insensitive", "none", "pub_first", "cfg_first"];
+    const VALID_FMT = ["disabled", "enabled"];
+    const VALID_TARGET = ["auto", "mod.rs", "lib.rs", "main.rs"];
+    const VALID_REEXPORT = ["disabled", "enabled"];
+    const VALID_STRICT = ["off", "warn", "error"];
+    const VALID_GROUP_ORDER = ["use", "cfg", "pub_mod", "mod", "pub_use"];
 
     let state = null;
+    let insights = null;
     let draft = null;
     let rawDraftText = "";
-    let rawDirty = false;
-    let mode = "visual";
+    let rawEditedManually = false;
+    let mode = restoredState.mode || "visual";
+    let playgroundInput = restoredState.playgroundInput || "";
+    let historyByUri = restoredState.historyByUri || {};
+    let openSections = new Set(restoredState.openSections || ["document", "rules", "impact", "playground", "audit", "history"]);
+    let draggingRuleId = null;
+    let acceptIncomingState = false;
+    let renderTimer = null;
+    let insightsTimer = null;
 
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
+    }
+
+    function uid(prefix) {
+        return prefix + "-" + Math.random().toString(36).slice(2, 10);
     }
 
     function escapeHtml(value) {
@@ -19,6 +40,31 @@
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#39;");
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value);
+    }
+
+    function encodeDataValue(value) {
+        return encodeURIComponent(String(value ?? ""));
+    }
+
+    function decodeDataValue(value) {
+        try {
+            return decodeURIComponent(String(value ?? ""));
+        } catch {
+            return String(value ?? "");
+        }
+    }
+
+    function persistUiState() {
+        vscode.setState({
+            mode,
+            playgroundInput,
+            historyByUri,
+            openSections: Array.from(openSections)
+        });
     }
 
     function renderRuntimeError(message) {
@@ -33,30 +79,122 @@
         `;
     }
 
-    function setState(nextState) {
-        state = nextState;
-        draft = clone(nextState);
-        rawDraftText = nextState.rawText ?? "";
-        rawDirty = false;
-        render();
+    function renderLoadingSkeleton() {
+        root.innerHTML = `
+            <div class="editor-shell">
+                <section class="hero studio-animated">
+                    <div class="skeleton-block wide"></div>
+                    <div class="skeleton-block medium"></div>
+                </section>
+                <section class="panel skeleton-panel">
+                    <div class="skeleton-block wide"></div>
+                    <div class="skeleton-block"></div>
+                    <div class="skeleton-block"></div>
+                </section>
+            </div>
+        `;
     }
 
-    function renderPreservingViewport() {
-        const viewportTop = window.scrollY;
-        render();
-        window.scrollTo(0, viewportTop);
+    function ensureRuleIds(documentState) {
+        const nextState = clone(documentState);
+        nextState.rules = (nextState.rules || []).map(rule => Object.assign({}, rule, {
+            id: rule.id || uid("rule")
+        }));
+        return nextState;
     }
 
-    function normalizeList(value) {
-        return String(value || "")
-            .split(",")
-            .map(item => item.trim())
-            .filter(Boolean)
-            .join(",");
+    function createRule() {
+        return {
+            id: uid("rule"),
+            visibility: "pub",
+            sort: "alpha",
+            fmt: "disabled",
+            target: "auto",
+            pattern: "",
+            exclude: "",
+            cfg: "",
+            groupOrder: VALID_GROUP_ORDER.join(","),
+            blankLines: 1,
+            reexport: "disabled",
+            header: "",
+            generatedComment: ""
+        };
+    }
+
+    function createEmptyInsights() {
+        return {
+            impact: {
+                totalRustFiles: 0,
+                matchedCount: 0,
+                ignoredCount: 0,
+                shadowedCount: 0,
+                uncoveredCount: 0,
+                items: []
+            },
+            audit: {
+                issueCount: 0,
+                invalidCount: 0,
+                duplicateRuleCount: 0,
+                unusedRuleCount: 0,
+                overlapCount: 0,
+                ignoredFileCount: 0,
+                shadowedFileCount: 0,
+                uncoveredFileCount: 0,
+                issues: []
+            },
+            playground: null
+        };
+    }
+
+    function splitChipList(value) {
+        const input = String(value ?? "").trim();
+        if (!input) {
+            return [];
+        }
+
+        const entries = [];
+        let current = "";
+        let depth = 0;
+        let inQuotes = false;
+
+        for (let index = 0; index < input.length; index += 1) {
+            const character = input[index];
+            if (character === '"' && input[index - 1] !== "\\") {
+                inQuotes = !inQuotes;
+                current += character;
+                continue;
+            }
+
+            if (!inQuotes) {
+                if (character === "(" || character === "[" || character === "{") {
+                    depth += 1;
+                } else if (character === ")" || character === "]" || character === "}") {
+                    depth = Math.max(0, depth - 1);
+                } else if (character === "," && depth === 0) {
+                    if (current.trim()) {
+                        entries.push(current.trim());
+                    }
+                    current = "";
+                    continue;
+                }
+            }
+
+            current += character;
+        }
+
+        if (current.trim()) {
+            entries.push(current.trim());
+        }
+
+        return entries;
+    }
+
+    function joinChipList(values) {
+        return values.filter(Boolean).join(",");
     }
 
     function normalizeDraftWhitespace(content) {
-        const cleaned = content
+        const cleaned = String(content ?? "")
             .replace(/\r\n/g, "\n")
             .split("\n")
             .map(line => line.trimEnd())
@@ -73,28 +211,37 @@
             "strict=" + (documentDraft.strictMode || "warn")
         ];
 
-        if ((documentDraft.extendsPaths || "").trim()) {
-            lines.push("extends=" + normalizeList(documentDraft.extendsPaths));
+        const extendsEntries = splitChipList(documentDraft.extendsPaths);
+        if (extendsEntries.length > 0) {
+            lines.push("extends=" + joinChipList(extendsEntries));
         }
 
-        for (const rule of documentDraft.rules) {
+        for (const rule of documentDraft.rules || []) {
             lines.push("");
             lines.push("visibility=" + (rule.visibility || "pub"));
             lines.push("sort=" + (rule.sort || "alpha"));
             lines.push("fmt=" + (rule.fmt || "disabled"));
             lines.push("target=" + (rule.target || "auto"));
-            if ((rule.pattern || "").trim()) {
-                lines.push("pattern=" + normalizeList(rule.pattern));
+
+            const patternEntries = splitChipList(rule.pattern);
+            const excludeEntries = splitChipList(rule.exclude);
+            const cfgEntries = splitChipList(rule.cfg);
+            const groupEntries = splitChipList(rule.groupOrder || VALID_GROUP_ORDER.join(","));
+
+            if (patternEntries.length > 0) {
+                lines.push("pattern=" + joinChipList(patternEntries));
             }
-            if ((rule.exclude || "").trim()) {
-                lines.push("exclude=" + normalizeList(rule.exclude));
+            if (excludeEntries.length > 0) {
+                lines.push("exclude=" + joinChipList(excludeEntries));
             }
-            if ((rule.cfg || "").trim()) {
-                lines.push("cfg=" + normalizeList(rule.cfg));
+            if (cfgEntries.length > 0) {
+                lines.push("cfg=" + joinChipList(cfgEntries));
             }
-            lines.push("group_order=" + normalizeList(rule.groupOrder || "use,cfg,pub_mod,mod,pub_use"));
-            lines.push("blank_lines=" + String(rule.blankLines ?? 1));
+
+            lines.push("group_order=" + joinChipList(groupEntries.length > 0 ? groupEntries : VALID_GROUP_ORDER));
+            lines.push("blank_lines=" + String(Math.max(0, Number(rule.blankLines) || 0)));
             lines.push("reexport=" + (rule.reexport || "disabled"));
+
             if ((rule.header || "").trim()) {
                 lines.push("header=" + rule.header.trim());
             }
@@ -106,269 +253,1153 @@
         return normalizeDraftWhitespace(lines.join("\n"));
     }
 
+    function getHistoryEntries() {
+        if (!state?.uri) {
+            return [];
+        }
+
+        return historyByUri[state.uri] || [];
+    }
+
+    function pushHistorySnapshot(label, documentDraft, rawText) {
+        if (!state?.uri) {
+            return;
+        }
+
+        const snapshotRawText = normalizeDraftWhitespace(rawText);
+        const entries = getHistoryEntries();
+        if (entries[0] && entries[0].rawText === snapshotRawText) {
+            return;
+        }
+
+        historyByUri[state.uri] = [
+            {
+                id: uid("snapshot"),
+                label,
+                timestamp: Date.now(),
+                rawText: snapshotRawText,
+                draft: ensureRuleIds(documentDraft)
+            },
+            ...entries
+        ].slice(0, 12);
+        persistUiState();
+    }
+
+    function getSavedSerializedText() {
+        return state ? serializeDraftToText(state) : "";
+    }
+
+    function getVisualSerializedText() {
+        return draft ? serializeDraftToText(draft) : "";
+    }
+
+    function hasVisualChanges() {
+        return Boolean(state && draft && getVisualSerializedText() !== getSavedSerializedText());
+    }
+
+    function hasRawChanges() {
+        return Boolean(state && normalizeDraftWhitespace(rawDraftText) !== normalizeDraftWhitespace(state.rawText || ""));
+    }
+
+    function hasDivergedDrafts() {
+        return Boolean(rawEditedManually && hasVisualChanges() && normalizeDraftWhitespace(rawDraftText) !== getVisualSerializedText());
+    }
+
+    function hasUnsavedChanges() {
+        return hasVisualChanges() || hasRawChanges();
+    }
+
+    function getWorkingText() {
+        if (mode === "raw" && rawEditedManually) {
+            return normalizeDraftWhitespace(rawDraftText);
+        }
+
+        if (hasDivergedDrafts()) {
+            return getVisualSerializedText();
+        }
+
+        if (rawEditedManually) {
+            return normalizeDraftWhitespace(rawDraftText);
+        }
+
+        return getVisualSerializedText() || normalizeDraftWhitespace(rawDraftText);
+    }
+
+    function requestInsightsRefresh() {
+        if (!state) {
+            return;
+        }
+
+        if (insightsTimer) {
+            clearTimeout(insightsTimer);
+        }
+
+        insightsTimer = setTimeout(() => {
+            vscode.postMessage({
+                type: "refreshInsights",
+                rawText: getWorkingText(),
+                matchPath: playgroundInput.trim() || undefined
+            });
+        }, 220);
+    }
+
+    function captureInteractionState() {
+        const activeElement = document.activeElement;
+        return {
+            viewportTop: window.scrollY,
+            focusId: activeElement && root.contains(activeElement)
+                ? activeElement.getAttribute("data-focus-id")
+                : null,
+            selectionStart: typeof activeElement?.selectionStart === "number" ? activeElement.selectionStart : null,
+            selectionEnd: typeof activeElement?.selectionEnd === "number" ? activeElement.selectionEnd : null,
+            elementScrollTop: typeof activeElement?.scrollTop === "number" ? activeElement.scrollTop : null
+        };
+    }
+
+    function restoreInteractionState(snapshot) {
+        window.scrollTo(0, snapshot.viewportTop || 0);
+        if (!snapshot.focusId) {
+            return;
+        }
+
+        const nextElement = root.querySelector('[data-focus-id="' + snapshot.focusId + '"]');
+        if (!nextElement || typeof nextElement.focus !== "function") {
+            return;
+        }
+
+        nextElement.focus({ preventScroll: true });
+
+        if (typeof snapshot.selectionStart === "number" && typeof nextElement.selectionStart === "number") {
+            nextElement.selectionStart = snapshot.selectionStart;
+            nextElement.selectionEnd = snapshot.selectionEnd;
+        }
+
+        if (typeof snapshot.elementScrollTop === "number" && typeof nextElement.scrollTop === "number") {
+            nextElement.scrollTop = snapshot.elementScrollTop;
+        }
+    }
+
+    function scheduleRender() {
+        if (renderTimer) {
+            return;
+        }
+
+        renderTimer = requestAnimationFrame(() => {
+            renderTimer = null;
+            const interaction = captureInteractionState();
+            render();
+            restoreInteractionState(interaction);
+        });
+    }
+
+    function setState(nextState) {
+        const incomingState = ensureRuleIds(nextState);
+
+        if (state && hasUnsavedChanges() && !acceptIncomingState) {
+            const shouldReplace = window.confirm("The underlying .rautomod changed. Replace your unsaved Studio draft with the latest saved version?");
+            if (!shouldReplace) {
+                return;
+            }
+
+            pushHistorySnapshot("Discarded draft", draft, rawDraftText);
+        } else if (state && normalizeDraftWhitespace(state.rawText || "") !== normalizeDraftWhitespace(incomingState.rawText || "")) {
+            pushHistorySnapshot("Saved version", state, state.rawText || "");
+        }
+
+        state = incomingState;
+        draft = clone(incomingState);
+        rawDraftText = incomingState.rawText || "";
+        rawEditedManually = false;
+        insights = insights || createEmptyInsights();
+        acceptIncomingState = false;
+        persistUiState();
+        scheduleRender();
+        requestInsightsRefresh();
+    }
+
+    function setInsights(nextInsights) {
+        insights = nextInsights || createEmptyInsights();
+        scheduleRender();
+    }
+
+    function setMode(nextMode) {
+        if (mode === nextMode) {
+            return;
+        }
+
+        mode = nextMode;
+        persistUiState();
+        requestInsightsRefresh();
+        scheduleRender();
+    }
+
+    function setOpenSection(sectionId, isOpen) {
+        if (isOpen) {
+            openSections.add(sectionId);
+        } else {
+            openSections.delete(sectionId);
+        }
+        persistUiState();
+    }
+
+    function syncVisualToRaw() {
+        if (rawEditedManually) {
+            return;
+        }
+
+        rawDraftText = getVisualSerializedText();
+    }
+
+    function updateDocumentField(field, value) {
+        if (!draft) {
+            return;
+        }
+
+        draft[field] = value;
+        syncVisualToRaw();
+        requestInsightsRefresh();
+        scheduleRender();
+    }
+
+    function updateRuleField(index, field, value) {
+        if (!draft?.rules[index]) {
+            return;
+        }
+
+        draft.rules[index][field] = field === "blankLines"
+            ? Math.max(0, Number(value) || 0)
+            : value;
+        syncVisualToRaw();
+        requestInsightsRefresh();
+        scheduleRender();
+    }
+
+    function applyFieldFix(scope, index, field, value) {
+        if (scope === "document") {
+            updateDocumentField(field, value);
+            return;
+        }
+
+        updateRuleField(index, field, value);
+    }
+
+    function getDocumentFieldIssues(documentDraft) {
+        const issues = {
+            schemaVersion: [],
+            strictMode: [],
+            extendsPaths: []
+        };
+
+        if (!["1"].includes(String(documentDraft.schemaVersion || ""))) {
+            issues.schemaVersion.push({
+                severity: "error",
+                message: "schema_version only supports 1 right now.",
+                fixValue: "1"
+            });
+        }
+
+        if (!VALID_STRICT.includes(String(documentDraft.strictMode || ""))) {
+            issues.strictMode.push({
+                severity: "error",
+                message: "strict should be off, warn, or error.",
+                fixValue: "warn"
+            });
+        }
+
+        const duplicateExtends = findDuplicateTokens(splitChipList(documentDraft.extendsPaths));
+        if (duplicateExtends.length > 0) {
+            issues.extendsPaths.push({
+                severity: "warning",
+                message: "Repeated extends entries can make the config harder to read."
+            });
+        }
+
+        return issues;
+    }
+
+    function getRuleFieldIssues(rule) {
+        const issues = {
+            visibility: [],
+            sort: [],
+            fmt: [],
+            target: [],
+            pattern: [],
+            exclude: [],
+            cfg: [],
+            groupOrder: [],
+            blankLines: [],
+            reexport: [],
+            header: [],
+            generatedComment: []
+        };
+
+        if (!VALID_VISIBILITY.includes(String(rule.visibility || ""))) {
+            issues.visibility.push({
+                severity: "error",
+                message: "visibility must be one of the supported Rust AutoMod values.",
+                fixValue: "pub"
+            });
+        }
+
+        if (!VALID_SORT.includes(String(rule.sort || ""))) {
+            issues.sort.push({
+                severity: "error",
+                message: "sort must be alpha, alpha_case_insensitive, none, pub_first, or cfg_first.",
+                fixValue: "alpha"
+            });
+        }
+
+        if (!VALID_FMT.includes(String(rule.fmt || ""))) {
+            issues.fmt.push({
+                severity: "error",
+                message: "fmt should be enabled or disabled.",
+                fixValue: "disabled"
+            });
+        }
+
+        if (!VALID_TARGET.includes(String(rule.target || ""))) {
+            issues.target.push({
+                severity: "error",
+                message: "target should be auto, mod.rs, lib.rs, or main.rs.",
+                fixValue: "auto"
+            });
+        }
+
+        if (!VALID_REEXPORT.includes(String(rule.reexport || ""))) {
+            issues.reexport.push({
+                severity: "error",
+                message: "reexport should be enabled or disabled.",
+                fixValue: "disabled"
+            });
+        }
+
+        const blankLines = Number(rule.blankLines);
+        if (!Number.isInteger(blankLines) || blankLines < 0) {
+            issues.blankLines.push({
+                severity: "error",
+                message: "blank_lines must be a non-negative integer.",
+                fixValue: "1"
+            });
+        }
+
+        const groupOrderEntries = splitChipList(rule.groupOrder || "");
+        const invalidGroups = groupOrderEntries.filter(entry => !VALID_GROUP_ORDER.includes(entry));
+        if (invalidGroups.length > 0 || groupOrderEntries.length !== VALID_GROUP_ORDER.length) {
+            issues.groupOrder.push({
+                severity: "warning",
+                message: "group_order should contain each supported group exactly once.",
+                fixValue: VALID_GROUP_ORDER.join(",")
+            });
+        }
+
+        const patternEntries = splitChipList(rule.pattern || "");
+        if (patternEntries.length > 0 && patternEntries.every(entry => entry.startsWith("!"))) {
+            issues.pattern.push({
+                severity: "warning",
+                message: "A rule with only negative patterns can never win."
+            });
+        }
+
+        if (findDuplicateTokens(patternEntries).length > 0) {
+            issues.pattern.push({
+                severity: "info",
+                message: "Repeated pattern entries can be simplified."
+            });
+        }
+
+        if (findDuplicateTokens(splitChipList(rule.exclude || "")).length > 0) {
+            issues.exclude.push({
+                severity: "info",
+                message: "Repeated exclude entries can be simplified."
+            });
+        }
+
+        if (findDuplicateTokens(splitChipList(rule.cfg || "")).length > 0) {
+            issues.cfg.push({
+                severity: "info",
+                message: "Repeated cfg entries can be simplified."
+            });
+        }
+
+        return issues;
+    }
+
+    function findDuplicateTokens(values) {
+        const duplicates = [];
+        const seen = new Set();
+        for (const value of values) {
+            if (seen.has(value)) {
+                duplicates.push(value);
+            }
+            seen.add(value);
+        }
+        return duplicates;
+    }
+
+    function applyRecommendedDocumentFixes() {
+        const issues = getDocumentFieldIssues(draft);
+        Object.entries(issues).forEach(([field, fieldIssues]) => {
+            const quickFix = fieldIssues.find(issue => issue.fixValue !== undefined);
+            if (quickFix) {
+                draft[field] = quickFix.fixValue;
+            }
+        });
+        syncVisualToRaw();
+        requestInsightsRefresh();
+        scheduleRender();
+    }
+
+    function applyRecommendedRuleFixes(index) {
+        const rule = draft?.rules[index];
+        if (!rule) {
+            return;
+        }
+
+        const issues = getRuleFieldIssues(rule);
+        Object.entries(issues).forEach(([field, fieldIssues]) => {
+            const quickFix = fieldIssues.find(issue => issue.fixValue !== undefined);
+            if (quickFix) {
+                rule[field] = field === "blankLines"
+                    ? Math.max(0, Number(quickFix.fixValue) || 0)
+                    : quickFix.fixValue;
+            }
+        });
+        syncVisualToRaw();
+        requestInsightsRefresh();
+        scheduleRender();
+    }
+
+    function updateChipField(scope, index, field, values) {
+        const normalized = joinChipList(values);
+        if (scope === "document") {
+            updateDocumentField(field, normalized);
+            return;
+        }
+
+        updateRuleField(index, field, normalized);
+    }
+
+    function commitChipInput(target) {
+        const scope = target.getAttribute("data-chip-scope");
+        const field = target.getAttribute("data-chip-field");
+        const index = Number(target.getAttribute("data-index"));
+        const nextValues = splitChipList(target.value);
+
+        if (!scope || !field || nextValues.length === 0) {
+            target.value = "";
+            return;
+        }
+
+        const baseValues = scope === "document"
+            ? splitChipList(draft[field] || "")
+            : splitChipList(draft.rules[index]?.[field] || "");
+
+        updateChipField(scope, index, field, [...baseValues, ...nextValues]);
+        target.value = "";
+    }
+
+    function focusIdForDocumentField(field) {
+        return "document:" + field;
+    }
+
+    function focusIdForRuleField(ruleId, field) {
+        return "rule:" + ruleId + ":" + field;
+    }
+
+    function focusIdForChip(scope, id, field) {
+        return "chip:" + scope + ":" + id + ":" + field;
+    }
+
     function renderSelectOptions(options, selectedValue) {
-        return options.map(option => `<option value="${escapeHtml(option)}" ${option === selectedValue ? "selected" : ""}>${escapeHtml(option)}</option>`).join("");
+        return options.map(option => `
+            <option value="${escapeAttr(option)}" ${option === selectedValue ? "selected" : ""}>${escapeHtml(option)}</option>
+        `).join("");
     }
 
-    function renderTab(tabMode, label) {
-        return `<button class="tab ${mode === tabMode ? "active" : ""}" data-action="set-mode" data-mode="${tabMode}">${label}</button>`;
-    }
+    function renderInlineIssues(scope, index, field, issues) {
+        if (!issues || issues.length === 0) {
+            return "";
+        }
 
-    function renderDiagnostic(diagnostic) {
         return `
-            <div class="diagnostic-item ${diagnostic.severity === "error" ? "error" : ""}">
-                <strong>${diagnostic.severity.toUpperCase()}</strong>
-                <div>Line ${Number(diagnostic.line) + 1}: ${escapeHtml(diagnostic.message)}</div>
-                ${diagnostic.key ? `<div class="helper">Key: ${escapeHtml(diagnostic.key)}</div>` : ""}
+            <div class="inline-issue-list">
+                ${issues.map(issue => `
+                    <div class="inline-issue ${issue.severity}">
+                        <span>${escapeHtml(issue.message)}</span>
+                        ${issue.fixValue !== undefined ? `
+                            <button
+                                class="mini-button"
+                                data-action="apply-fix"
+                                data-scope="${scope}"
+                                data-index="${index}"
+                                data-field="${field}"
+                                data-value="${escapeAttr(encodeDataValue(issue.fixValue))}"
+                            >
+                                Fix
+                            </button>
+                        ` : ""}
+                    </div>
+                `).join("")}
             </div>
         `;
     }
 
-    function renderRuleCard(rule, index) {
-        const label = rule.pattern ? "Scoped rule" : "Default rule";
+    function renderChipEditor(options) {
+        const values = splitChipList(options.value || "");
+        const scope = options.scope;
+        const index = options.index;
+        const focusId = focusIdForChip(scope, options.focusKey, options.field);
+
         return `
-            <article class="rule-card">
-                <div class="rule-head">
+            <div class="field">
+                <label>${escapeHtml(options.label)}</label>
+                <div class="chip-editor">
+                    <div class="chip-list">
+                        ${values.length > 0 ? values.map(value => `
+                            <span class="chip">
+                                <span>${escapeHtml(value)}</span>
+                                <button
+                                    class="chip-remove"
+                                    data-action="remove-chip"
+                                    data-chip-scope="${scope}"
+                                    data-index="${index}"
+                                    data-chip-field="${options.field}"
+                                    data-chip-value="${escapeAttr(encodeDataValue(value))}"
+                                >
+                                    x
+                                </button>
+                            </span>
+                        `).join("") : `<span class="helper">${escapeHtml(options.emptyLabel || "No entries yet.")}</span>`}
+                    </div>
+                    <div class="chip-input-row">
+                        <input
+                            data-focus-id="${focusId}"
+                            data-role="chip-input"
+                            data-chip-scope="${scope}"
+                            data-index="${index}"
+                            data-chip-field="${options.field}"
+                            placeholder="${escapeAttr(options.placeholder)}"
+                        />
+                        <button
+                            class="mini-button"
+                            data-action="add-chip"
+                            data-chip-scope="${scope}"
+                            data-index="${index}"
+                            data-chip-field="${options.field}"
+                            data-focus-id="${focusId}:add"
+                        >
+                            Add
+                        </button>
+                    </div>
+                </div>
+                ${renderInlineIssues(scope, index, options.field, options.issues)}
+            </div>
+        `;
+    }
+
+    function renderField(options) {
+        return `
+            <div class="field">
+                <label>${escapeHtml(options.label)}</label>
+                ${options.control}
+                ${renderInlineIssues(options.scope, options.index, options.field, options.issues)}
+            </div>
+        `;
+    }
+
+    function renderDisclosure(sectionId, title, subtitle, body, badgeMarkup) {
+        return `
+            <details class="panel studio-animated" data-disclosure-id="${sectionId}" ${openSections.has(sectionId) ? "open" : ""}>
+                <summary class="panel-summary">
+                    <div>
+                        <h2>${escapeHtml(title)}</h2>
+                        <div class="helper">${escapeHtml(subtitle)}</div>
+                    </div>
+                    <div class="hero-actions">
+                        ${badgeMarkup || ""}
+                    </div>
+                </summary>
+                <div class="disclosure-body">
+                    ${body}
+                </div>
+            </details>
+        `;
+    }
+
+    function renderRuleCard(rule, index) {
+        const issues = getRuleFieldIssues(rule);
+        const issueCount = Object.values(issues).reduce((count, fieldIssues) => count + fieldIssues.length, 0);
+        const label = splitChipList(rule.pattern || "").length > 0 ? "Scoped rule" : "Default rule";
+        const focusKey = rule.id || ("rule-" + index);
+
+        return `
+            <article class="rule-card studio-animated" draggable="true" data-rule-index="${index}" data-rule-id="${escapeAttr(rule.id)}">
+                <div class="rule-card-banner">
+                    <button class="drag-handle" data-role="drag-handle" title="Drag to reorder">::</button>
                     <div class="rule-title">
                         <h3>Rule ${index + 1}</h3>
-                        <div class="rule-flags">
-                            <span class="badge">${label}</span>
-                            <span class="badge">${escapeHtml(rule.visibility)}</span>
-                            <span class="badge">${escapeHtml(rule.target)}</span>
-                        </div>
+                        <div class="helper">${label}. First matching rule still wins.</div>
                     </div>
-                    <div class="rule-actions">
-                        <button class="button ghost" data-action="duplicate-rule" data-index="${index}">Duplicate</button>
-                        <button class="button ghost" data-action="remove-rule" data-index="${index}">Remove</button>
+                    <div class="rule-flags">
+                        <span class="badge">${escapeHtml(rule.visibility)}</span>
+                        <span class="badge">${escapeHtml(rule.target)}</span>
+                        <span class="badge">${issueCount} fixes</span>
                     </div>
+                </div>
+                <div class="rule-actions">
+                    <button class="button ghost" data-action="duplicate-rule" data-index="${index}">Duplicate</button>
+                    <button class="button ghost" data-action="move-rule-up" data-index="${index}">Move Up</button>
+                    <button class="button ghost" data-action="move-rule-down" data-index="${index}">Move Down</button>
+                    <button class="button ghost" data-action="fix-rule" data-index="${index}">Quick Fix</button>
+                    <button class="button ghost" data-action="remove-rule" data-index="${index}">Remove</button>
                 </div>
                 <div class="field-grid compact">
-                    <div class="field">
-                        <label>Visibility</label>
-                        <select data-scope="rule" data-index="${index}" data-field="visibility">
-                            ${renderSelectOptions(["pub", "private", "pub(crate)", "pub(super)"], rule.visibility)}
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Sort</label>
-                        <select data-scope="rule" data-index="${index}" data-field="sort">
-                            ${renderSelectOptions(["alpha", "alpha_case_insensitive", "none", "pub_first", "cfg_first"], rule.sort)}
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Fmt</label>
-                        <select data-scope="rule" data-index="${index}" data-field="fmt">
-                            ${renderSelectOptions(["disabled", "enabled"], rule.fmt)}
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Target</label>
-                        <select data-scope="rule" data-index="${index}" data-field="target">
-                            ${renderSelectOptions(["auto", "mod.rs", "lib.rs", "main.rs"], rule.target)}
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Reexport</label>
-                        <select data-scope="rule" data-index="${index}" data-field="reexport">
-                            ${renderSelectOptions(["disabled", "enabled"], rule.reexport)}
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Blank Lines</label>
-                        <input type="number" min="0" data-scope="rule" data-index="${index}" data-field="blankLines" value="${escapeHtml(rule.blankLines)}" />
-                    </div>
+                    ${renderField({
+                        scope: "rule",
+                        index,
+                        field: "visibility",
+                        label: "Visibility",
+                        issues: issues.visibility,
+                        control: `
+                            <select data-focus-id="${focusIdForRuleField(focusKey, "visibility")}" data-scope="rule" data-index="${index}" data-field="visibility">
+                                ${renderSelectOptions(VALID_VISIBILITY, rule.visibility)}
+                            </select>
+                        `
+                    })}
+                    ${renderField({
+                        scope: "rule",
+                        index,
+                        field: "sort",
+                        label: "Sort",
+                        issues: issues.sort,
+                        control: `
+                            <select data-focus-id="${focusIdForRuleField(focusKey, "sort")}" data-scope="rule" data-index="${index}" data-field="sort">
+                                ${renderSelectOptions(VALID_SORT, rule.sort)}
+                            </select>
+                        `
+                    })}
+                    ${renderField({
+                        scope: "rule",
+                        index,
+                        field: "fmt",
+                        label: "Fmt",
+                        issues: issues.fmt,
+                        control: `
+                            <select data-focus-id="${focusIdForRuleField(focusKey, "fmt")}" data-scope="rule" data-index="${index}" data-field="fmt">
+                                ${renderSelectOptions(VALID_FMT, rule.fmt)}
+                            </select>
+                        `
+                    })}
+                    ${renderField({
+                        scope: "rule",
+                        index,
+                        field: "target",
+                        label: "Target",
+                        issues: issues.target,
+                        control: `
+                            <select data-focus-id="${focusIdForRuleField(focusKey, "target")}" data-scope="rule" data-index="${index}" data-field="target">
+                                ${renderSelectOptions(VALID_TARGET, rule.target)}
+                            </select>
+                        `
+                    })}
                 </div>
                 <div class="field-grid">
-                    <div class="field">
-                        <label>Pattern</label>
-                        <input data-scope="rule" data-index="${index}" data-field="pattern" value="${escapeHtml(rule.pattern)}" placeholder="internal,!tests,src/api/**" />
+                    ${renderChipEditor({
+                        label: "Pattern",
+                        scope: "rule",
+                        index,
+                        field: "pattern",
+                        value: rule.pattern,
+                        placeholder: "internal,!tests,src/api/**",
+                        emptyLabel: "No pattern means this rule acts like a default fallback.",
+                        issues: issues.pattern,
+                        focusKey
+                    })}
+                    ${renderChipEditor({
+                        label: "Exclude",
+                        scope: "rule",
+                        index,
+                        field: "exclude",
+                        value: rule.exclude,
+                        placeholder: "generated/**,fixtures/**",
+                        emptyLabel: "Exclude wins after the rule matches.",
+                        issues: issues.exclude,
+                        focusKey
+                    })}
+                    ${renderChipEditor({
+                        label: "Cfg",
+                        scope: "rule",
+                        index,
+                        field: "cfg",
+                        value: rule.cfg,
+                        placeholder: 'feature="serde",all(unix, target_pointer_width = "64")',
+                        emptyLabel: "Add cfg wrappers when declarations need feature gates.",
+                        issues: issues.cfg,
+                        focusKey
+                    })}
+                </div>
+                <details class="advanced-section" data-disclosure-id="rule-advanced-${escapeAttr(rule.id)}" ${openSections.has("rule-advanced-" + rule.id) ? "open" : ""}>
+                    <summary>Advanced Rule Options</summary>
+                    <div class="field-grid">
+                        ${renderField({
+                            scope: "rule",
+                            index,
+                            field: "groupOrder",
+                            label: "Group Order",
+                            issues: issues.groupOrder,
+                            control: `
+                                <input
+                                    data-focus-id="${focusIdForRuleField(focusKey, "groupOrder")}"
+                                    data-scope="rule"
+                                    data-index="${index}"
+                                    data-field="groupOrder"
+                                    value="${escapeAttr(rule.groupOrder)}"
+                                    placeholder="use,cfg,pub_mod,mod,pub_use"
+                                />
+                            `
+                        })}
+                        ${renderField({
+                            scope: "rule",
+                            index,
+                            field: "blankLines",
+                            label: "Blank Lines",
+                            issues: issues.blankLines,
+                            control: `
+                                <input
+                                    type="number"
+                                    min="0"
+                                    data-focus-id="${focusIdForRuleField(focusKey, "blankLines")}"
+                                    data-scope="rule"
+                                    data-index="${index}"
+                                    data-field="blankLines"
+                                    value="${escapeAttr(rule.blankLines)}"
+                                />
+                            `
+                        })}
+                        ${renderField({
+                            scope: "rule",
+                            index,
+                            field: "reexport",
+                            label: "Reexport",
+                            issues: issues.reexport,
+                            control: `
+                                <select data-focus-id="${focusIdForRuleField(focusKey, "reexport")}" data-scope="rule" data-index="${index}" data-field="reexport">
+                                    ${renderSelectOptions(VALID_REEXPORT, rule.reexport)}
+                                </select>
+                            `
+                        })}
+                        ${renderField({
+                            scope: "rule",
+                            index,
+                            field: "header",
+                            label: "Header",
+                            issues: issues.header,
+                            control: `
+                                <input
+                                    data-focus-id="${focusIdForRuleField(focusKey, "header")}"
+                                    data-scope="rule"
+                                    data-index="${index}"
+                                    data-field="header"
+                                    value="${escapeAttr(rule.header)}"
+                                    placeholder="generated by rustautomod"
+                                />
+                            `
+                        })}
+                        ${renderField({
+                            scope: "rule",
+                            index,
+                            field: "generatedComment",
+                            label: "Generated Comment",
+                            issues: issues.generatedComment,
+                            control: `
+                                <input
+                                    data-focus-id="${focusIdForRuleField(focusKey, "generatedComment")}"
+                                    data-scope="rule"
+                                    data-index="${index}"
+                                    data-field="generatedComment"
+                                    value="${escapeAttr(rule.generatedComment)}"
+                                    placeholder="managed by rustautomod"
+                                />
+                            `
+                        })}
                     </div>
-                    <div class="field">
-                        <label>Exclude</label>
-                        <input data-scope="rule" data-index="${index}" data-field="exclude" value="${escapeHtml(rule.exclude)}" placeholder="generated/**,fixtures/**" />
+                </details>
+            </article>
+        `;
+    }
+
+    function renderImpactItem(item) {
+        const preview = (item.previewLines || []).length > 0
+            ? `<pre class="code-preview">${escapeHtml(item.previewLines.join("\n"))}</pre>`
+            : `<div class="helper">No preview lines for this item.</div>`;
+
+        const targetActions = [];
+        if (item.fileUri) {
+            targetActions.push(`<button class="mini-button" data-action="open-file" data-uri="${escapeAttr(item.fileUri)}">Open Source</button>`);
+        }
+        if (item.targetFileUri) {
+            targetActions.push(`<button class="mini-button" data-action="open-file" data-uri="${escapeAttr(item.targetFileUri)}">Open Target</button>`);
+        }
+        if (item.folderUri) {
+            targetActions.push(`<button class="mini-button" data-action="reveal-folder" data-uri="${escapeAttr(item.folderUri)}">Reveal Folder</button>`);
+        }
+
+        return `
+            <article class="impact-item ${item.status}">
+                <div class="impact-item-top">
+                    <div>
+                        <strong>${escapeHtml(item.relativePath)}</strong>
+                        <div class="helper">${escapeHtml(item.reason)}</div>
                     </div>
-                    <div class="field">
-                        <label>Cfg</label>
-                        <input data-scope="rule" data-index="${index}" data-field="cfg" value="${escapeHtml(rule.cfg)}" placeholder='feature="serde",all(unix, target_pointer_width = "64")' />
+                    <div class="hero-actions">
+                        <span class="badge badge-${item.status}">${escapeHtml(item.status)}</span>
+                        <span class="badge">rule ${item.winnerRuleIndex === null ? "-" : item.winnerRuleIndex + 1}</span>
                     </div>
-                    <div class="field">
-                        <label>Group Order</label>
-                        <input data-scope="rule" data-index="${index}" data-field="groupOrder" value="${escapeHtml(rule.groupOrder)}" placeholder="use,cfg,pub_mod,mod,pub_use" />
-                    </div>
-                    <div class="field">
-                        <label>Header</label>
-                        <input data-scope="rule" data-index="${index}" data-field="header" value="${escapeHtml(rule.header)}" placeholder="generated by rustautomod" />
-                    </div>
-                    <div class="field">
-                        <label>Generated Comment</label>
-                        <input data-scope="rule" data-index="${index}" data-field="generatedComment" value="${escapeHtml(rule.generatedComment)}" placeholder="managed by rustautomod" />
-                    </div>
+                </div>
+                <div class="helper">
+                    ${item.matchedPatterns && item.matchedPatterns.length > 0 ? "Matched patterns: " + escapeHtml(item.matchedPatterns.join(", ")) : "No explicit pattern match recorded."}
+                </div>
+                ${item.targetFilePath ? `<div class="helper">Target: ${escapeHtml(item.targetFilePath)}</div>` : ""}
+                ${item.shadowedByConfigUri ? `<div class="helper">Shadowed by: ${escapeHtml(item.shadowedByConfigUri)}</div>` : ""}
+                ${preview}
+                <div class="hero-actions">${targetActions.join("")}</div>
+            </article>
+        `;
+    }
+
+    function renderAuditIssue(issue) {
+        return `
+            <div class="diagnostic-item ${issue.severity}">
+                <strong>${escapeHtml(issue.kind.replace(/_/g, " "))}</strong>
+                <div>${escapeHtml(issue.message)}</div>
+                ${issue.fileUri ? `<button class="mini-button" data-action="open-file" data-uri="${escapeAttr(issue.fileUri)}">Open File</button>` : ""}
+            </div>
+        `;
+    }
+
+    function renderHistoryItem(entry, index) {
+        return `
+            <article class="history-item">
+                <div>
+                    <strong>${escapeHtml(entry.label)}</strong>
+                    <div class="helper">${new Date(entry.timestamp).toLocaleString()}</div>
+                </div>
+                <div class="hero-actions">
+                    <span class="badge">${(entry.draft?.rules || []).length} rules</span>
+                    <button class="mini-button" data-action="restore-history" data-history-index="${index}">Restore Draft</button>
                 </div>
             </article>
         `;
     }
 
-    function renderVisualColumn(currentDraft, diagnostics) {
-        const rulesMarkup = currentDraft.rules.length > 0
-            ? currentDraft.rules.map((rule, index) => renderRuleCard(rule, index)).join("")
-            : '<div class="empty-state">No rules yet. Add a rule block to start shaping this config visually.</div>';
+    function renderPlayground(playground) {
+        const resultMarkup = playground ? `
+            <div class="playground-result ${playground.outcome}">
+                <div class="impact-item-top">
+                    <div>
+                        <strong>${escapeHtml(playground.outcome)}</strong>
+                        <div class="helper">${escapeHtml(playground.reason)}</div>
+                    </div>
+                    <div class="hero-actions">
+                        <span class="badge">${playground.winnerRuleIndex === null ? "No winner" : "Rule " + (playground.winnerRuleIndex + 1)}</span>
+                    </div>
+                </div>
+                <div class="helper">${escapeHtml(playground.resolvedPath)}</div>
+                ${playground.targetFilePath ? `<div class="helper">Target: ${escapeHtml(playground.targetFilePath)}</div>` : ""}
+                ${(playground.previewLines || []).length > 0 ? `<pre class="code-preview">${escapeHtml(playground.previewLines.join("\n"))}</pre>` : ""}
+                <div class="playground-rule-list">
+                    ${(playground.ruleDetails || []).map(rule => `
+                        <div class="playground-rule ${rule.ruleIndex === playground.winnerRuleIndex ? "winner" : ""}">
+                            <div class="impact-item-top">
+                                <strong>Rule ${rule.ruleIndex + 1}</strong>
+                                <span class="badge ${rule.matched ? "badge-success" : "badge-muted"}">${rule.matched ? "matched" : "not matched"}</span>
+                            </div>
+                            <div class="helper">${escapeHtml(rule.summary)}</div>
+                            <div>${escapeHtml(rule.reason)}</div>
+                        </div>
+                    `).join("")}
+                </div>
+            </div>
+        ` : `<div class="empty-state small">Type a Rust path or module and run the playground to see which rule wins and why.</div>`;
+
+        return `
+            <div class="playground-bar">
+                <input
+                    data-focus-id="playground-input"
+                    data-role="playground-input"
+                    value="${escapeAttr(playgroundInput)}"
+                    placeholder="src/application/queries/find_order.rs"
+                />
+                <button class="button secondary" data-action="run-playground">Analyze Path</button>
+            </div>
+            ${resultMarkup}
+        `;
+    }
+
+    function renderVisualColumn() {
+        const documentIssues = getDocumentFieldIssues(draft);
+        const impact = insights?.impact || createEmptyInsights().impact;
+        const audit = insights?.audit || createEmptyInsights().audit;
+        const historyEntries = getHistoryEntries();
 
         return `
             <div class="stack">
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Config Frame</h2>
-                            <div class="helper">Visual edits rewrite the file in a normalized layout. Keep Raw mode nearby when you care about comments or exact spacing.</div>
+                ${renderDisclosure(
+                    "document",
+                    "Config Frame",
+                    "Document-wide settings, quick fixes, and preservable metadata.",
+                    `
+                        <div class="panel-toolbar">
+                            <button class="button primary" data-action="apply-visual">Apply Visual Changes</button>
+                            <button class="button ghost" data-action="fix-document">Quick Fix Document</button>
+                            <button class="button ghost" data-action="snapshot">Create Snapshot</button>
                         </div>
-                        <button class="button primary" data-action="apply-visual">Apply Visual Changes</button>
-                    </div>
-                    <div class="field-grid">
-                        <div class="field">
-                            <label>Schema Version</label>
-                            <select data-scope="document" data-field="schemaVersion">
-                                ${renderSelectOptions(["1"], currentDraft.schemaVersion)}
-                            </select>
+                        <div class="field-grid">
+                            ${renderField({
+                                scope: "document",
+                                index: "",
+                                field: "schemaVersion",
+                                label: "Schema Version",
+                                issues: documentIssues.schemaVersion,
+                                control: `
+                                    <select data-focus-id="${focusIdForDocumentField("schemaVersion")}" data-scope="document" data-field="schemaVersion">
+                                        ${renderSelectOptions(["1"], draft.schemaVersion)}
+                                    </select>
+                                `
+                            })}
+                            ${renderField({
+                                scope: "document",
+                                index: "",
+                                field: "strictMode",
+                                label: "Strict Mode",
+                                issues: documentIssues.strictMode,
+                                control: `
+                                    <select data-focus-id="${focusIdForDocumentField("strictMode")}" data-scope="document" data-field="strictMode">
+                                        ${renderSelectOptions(VALID_STRICT, draft.strictMode)}
+                                    </select>
+                                `
+                            })}
+                            ${renderChipEditor({
+                                label: "Extends",
+                                scope: "document",
+                                index: "",
+                                field: "extendsPaths",
+                                value: draft.extendsPaths,
+                                placeholder: "./shared.rautomod,../preset.rautomod",
+                                emptyLabel: "No inherited preset files yet.",
+                                issues: documentIssues.extendsPaths,
+                                focusKey: "document"
+                            })}
                         </div>
-                        <div class="field">
-                            <label>Strict Mode</label>
-                            <select data-scope="document" data-field="strictMode">
-                                ${renderSelectOptions(["off", "warn", "error"], currentDraft.strictMode)}
-                            </select>
+                        <div class="raw-banner">
+                            Visual save preserves unmanaged comment blocks and unrecognized sections from the last raw source whenever possible.
                         </div>
-                        <div class="field" style="grid-column: span 2;">
-                            <label>Extends</label>
-                            <input data-scope="document" data-field="extendsPaths" value="${escapeHtml(currentDraft.extendsPaths)}" placeholder="./shared.rautomod,../preset.rautomod" />
+                    `,
+                    `<span class="badge">${draft.rules.length} rules</span>`
+                )}
+                ${renderDisclosure(
+                    "rules",
+                    "Rule Blocks",
+                    "Reorder with drag and drop, keep common fields visible, and tuck advanced options away.",
+                    `
+                        <div class="panel-toolbar">
+                            <button class="button secondary" data-action="add-rule">Add Rule Block</button>
                         </div>
-                    </div>
-                </section>
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Rule Blocks</h2>
-                            <div class="helper">Each card is a block in the .rautomod file. Leave pattern empty to keep it as a default rule.</div>
+                        <div class="stack">
+                            ${draft.rules.length > 0
+                                ? draft.rules.map((rule, index) => renderRuleCard(rule, index)).join("")
+                                : `<div class="empty-state">No rules yet. Add a rule block to start shaping this config visually.</div>`
+                            }
                         </div>
-                        <button class="button secondary" data-action="add-rule">Add Rule Block</button>
-                    </div>
-                    <div class="stack">${rulesMarkup}</div>
-                </section>
+                    `,
+                    `<span class="badge">${draft.rules.length} total</span>`
+                )}
+                ${renderDisclosure(
+                    "impact",
+                    "Impact Preview",
+                    "See which Rust files are matched, ignored, shadowed, or still uncovered by this .rautomod.",
+                    `
+                        <div class="summary-grid">
+                            <div class="summary-card"><span class="helper">Rust files</span><strong>${impact.totalRustFiles}</strong></div>
+                            <div class="summary-card"><span class="helper">Matched</span><strong>${impact.matchedCount}</strong></div>
+                            <div class="summary-card"><span class="helper">Ignored</span><strong>${impact.ignoredCount}</strong></div>
+                            <div class="summary-card"><span class="helper">Uncovered</span><strong>${impact.uncoveredCount}</strong></div>
+                        </div>
+                        <div class="impact-list">
+                            ${impact.items && impact.items.length > 0
+                                ? impact.items.slice(0, 18).map(renderImpactItem).join("")
+                                : `<div class="empty-state small">No Rust files were discovered under this config yet.</div>`
+                            }
+                        </div>
+                    `,
+                    `<span class="badge">${impact.shadowedCount} shadowed</span>`
+                )}
+                ${renderDisclosure(
+                    "playground",
+                    "Matching Playground",
+                    "Test any Rust path and see which rule wins, which ones miss, and why.",
+                    renderPlayground(insights?.playground || null),
+                    `<span class="badge">${playgroundInput.trim() ? "Path loaded" : "Idle"}</span>`
+                )}
+                ${renderDisclosure(
+                    "audit",
+                    "Audit",
+                    "Diagnostics, duplicate rules, uncovered files, and other confidence checks for this config subtree.",
+                    `
+                        <div class="summary-grid">
+                            <div class="summary-card"><span class="helper">Issues</span><strong>${audit.issueCount}</strong></div>
+                            <div class="summary-card"><span class="helper">Invalid</span><strong>${audit.invalidCount}</strong></div>
+                            <div class="summary-card"><span class="helper">Duplicates</span><strong>${audit.duplicateRuleCount}</strong></div>
+                            <div class="summary-card"><span class="helper">Unused</span><strong>${audit.unusedRuleCount}</strong></div>
+                        </div>
+                        <div class="diagnostic-list">
+                            ${audit.issues && audit.issues.length > 0
+                                ? audit.issues.map(renderAuditIssue).join("")
+                                : `<div class="empty-state small">No audit findings right now.</div>`
+                            }
+                        </div>
+                    `,
+                    `<span class="badge">${audit.overlapCount} overlaps</span>`
+                )}
+                ${renderDisclosure(
+                    "history",
+                    "Local History",
+                    "Session-local restore points for this .rautomod draft.",
+                    `
+                        <div class="stack">
+                            ${historyEntries.length > 0
+                                ? historyEntries.map((entry, index) => renderHistoryItem(entry, index)).join("")
+                                : `<div class="empty-state small">No local snapshots yet. Create one before larger edits if you want quick restore points.</div>`
+                            }
+                        </div>
+                    `,
+                    `<span class="badge">${historyEntries.length} snapshots</span>`
+                )}
             </div>
-            <aside class="stack">
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Diagnostics</h2>
-                            <div class="helper">Live parsing feedback from the extension.</div>
-                        </div>
-                        <span class="badge">${diagnostics.length} issues</span>
-                    </div>
-                    <div class="diagnostic-list">
-                        ${diagnostics.length > 0 ? diagnostics.map(renderDiagnostic).join("") : '<div class="empty-state">No diagnostics right now. This config is clean.</div>'}
-                    </div>
-                </section>
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Context</h2>
-                            <div class="helper">Useful file metadata while you edit visually.</div>
-                        </div>
-                    </div>
-                    <div class="stack">
-                        <div class="metric"><strong>File</strong><span class="helper">${escapeHtml(state.fileName)}</span></div>
-                        <div class="metric"><strong>Workspace</strong><span class="helper">${escapeHtml(state.workspaceName || "No workspace folder")}</span></div>
-                        <div class="metric"><strong>Raw mode</strong><span class="helper">${rawDirty ? "Has unsaved raw draft" : "Mirrors last applied content"}</span></div>
-                    </div>
-                </section>
-            </aside>
         `;
     }
 
     function renderRawColumn() {
         return `
-            <section class="panel raw-pane">
+            <section class="panel raw-pane studio-animated">
                 <div class="panel-header">
                     <div>
                         <h2>Raw File</h2>
-                        <div class="helper">Use this when you want full control. You can still bounce back to Visual mode after inspecting the text.</div>
+                        <div class="helper">Raw and Visual stay in sync until you edit raw manually. When they diverge, Studio calls that out explicitly before you apply one over the other.</div>
                     </div>
                     <div class="hero-actions">
                         <button class="button ghost" data-action="format-raw">Format Raw</button>
                         <button class="button primary" data-action="apply-raw">Apply Raw Changes</button>
                     </div>
                 </div>
-                <div class="raw-banner">Visual mode will normalize the file and may remove comments or custom spacing. Raw mode is the safest place for hand-crafted notes.</div>
-                <textarea data-role="raw-editor" spellcheck="false">${escapeHtml(rawDraftText)}</textarea>
+                <div class="raw-banner">
+                    Unmanaged comments and blocks are preserved on visual saves when the serializer can map them back onto the generated structure.
+                </div>
+                <textarea data-focus-id="raw-editor" data-role="raw-editor" spellcheck="false">${escapeHtml(rawDraftText)}</textarea>
             </section>
         `;
     }
 
     function render() {
         if (!state || !draft) {
-            root.innerHTML = '<div class="empty-state">Loading Rust AutoMod editor...</div>';
+            renderLoadingSkeleton();
             return;
         }
 
-        const diagnostics = state.diagnostics ?? [];
         const layoutClass = mode === "raw" ? "raw" : mode === "split" ? "split" : "visual";
-        const visualColumn = mode !== "raw" ? renderVisualColumn(draft, diagnostics) : "";
-        const rawColumn = mode !== "visual" ? renderRawColumn() : "";
+        const dirtyBadges = [];
+
+        if (hasVisualChanges()) {
+            dirtyBadges.push('<span class="badge badge-warning">Visual draft</span>');
+        }
+        if (hasRawChanges()) {
+            dirtyBadges.push('<span class="badge badge-warning">Raw draft</span>');
+        }
+        if (hasDivergedDrafts()) {
+            dirtyBadges.push('<span class="badge badge-error">Diverged</span>');
+        }
+        if (dirtyBadges.length === 0) {
+            dirtyBadges.push('<span class="badge badge-success">Saved</span>');
+        }
+
+        const breadcrumbs = (state.fileName || state.uri || "")
+            .split(/[\\/]/)
+            .filter(Boolean)
+            .slice(-4)
+            .join(" / ");
 
         root.innerHTML = `
             <div class="editor-shell">
-                <section class="hero">
+                <section class="hero studio-animated">
                     <div class="hero-top">
                         <div>
                             <div class="eyebrow">Rust AutoMod Studio</div>
+                            <div class="breadcrumb">${escapeHtml(state.workspaceName || "workspace")} / ${escapeHtml(breadcrumbs)}</div>
                             <h1>.rautomod Visual Editor</h1>
-                            <p>Shape rules visually, keep the raw file in reach, and treat the config like a first-class product surface instead of a loose text blob.</p>
+                            <p>Edit visually, keep raw nearby, preview impact across the subtree, and understand exactly why a rule wins or loses.</p>
                         </div>
                         <div class="hero-actions">
-                            <span class="badge">${escapeHtml(state.workspaceName || "Workspace config")}</span>
-                            <span class="badge">${diagnostics.length} diagnostics</span>
-                            <span class="badge">${draft.rules.length} rule blocks</span>
+                            ${dirtyBadges.join("")}
+                            <span class="badge">${(insights?.audit?.issueCount || 0)} audit</span>
+                            <span class="badge">${draft.rules.length} rules</span>
                         </div>
                     </div>
                 </section>
                 <div class="toolbar">
                     <div class="tabs">
-                        ${renderTab("visual", "Visual")}
-                        ${renderTab("split", "Split")}
-                        ${renderTab("raw", "Raw")}
+                        <button class="tab ${mode === "visual" ? "active" : ""}" data-action="set-mode" data-mode="visual">Visual</button>
+                        <button class="tab ${mode === "split" ? "active" : ""}" data-action="set-mode" data-mode="split">Split</button>
+                        <button class="tab ${mode === "raw" ? "active" : ""}" data-action="set-mode" data-mode="raw">Raw</button>
                     </div>
                     <div class="hero-actions">
+                        <button class="button ghost" data-action="refresh-insights">Refresh Analysis</button>
                         <button class="button ghost" data-action="reset">Reset Draft</button>
-                        <button class="button secondary" data-action="add-rule">Add Rule</button>
                         <button class="button ghost" data-action="open-raw">Open Raw Externally</button>
                     </div>
                 </div>
+                ${hasDivergedDrafts() ? `
+                    <section class="raw-banner warning">
+                        Visual and Raw now diverge. Applying one side will overwrite the other unless you merge them first.
+                    </section>
+                ` : ""}
                 <div class="content-grid ${layoutClass}">
-                    ${visualColumn}
-                    ${rawColumn}
+                    ${mode !== "raw" ? renderVisualColumn() : ""}
+                    ${mode !== "visual" ? renderRawColumn() : ""}
                 </div>
             </div>
         `;
     }
 
-    function updateVisibleRawEditor() {
-        const rawEditor = root.querySelector('[data-role="raw-editor"]');
-        if (!(rawEditor instanceof HTMLTextAreaElement)) {
+    function moveRule(fromIndex, toIndex) {
+        if (!draft?.rules[fromIndex] || toIndex < 0 || toIndex >= draft.rules.length) {
             return;
         }
 
-        if (document.activeElement === rawEditor) {
-            return;
-        }
-
-        if (rawEditor.value !== rawDraftText) {
-            rawEditor.value = rawDraftText;
-        }
+        const [rule] = draft.rules.splice(fromIndex, 1);
+        draft.rules.splice(toIndex, 0, rule);
+        syncVisualToRaw();
+        requestInsightsRefresh();
+        scheduleRender();
     }
 
-    function syncVisualToRaw() {
-        if (!rawDirty) {
-            rawDraftText = serializeDraftToText(draft);
-            updateVisibleRawEditor();
+    function restoreHistoryEntry(index) {
+        const entry = getHistoryEntries()[index];
+        if (!entry) {
+            return;
         }
+
+        if (hasUnsavedChanges()) {
+            const shouldReplace = window.confirm("Replace the current draft with this local history snapshot?");
+            if (!shouldReplace) {
+                return;
+            }
+        }
+
+        draft = ensureRuleIds(entry.draft);
+        rawDraftText = entry.rawText;
+        rawEditedManually = true;
+        requestInsightsRefresh();
+        scheduleRender();
     }
 
     root.addEventListener("click", event => {
@@ -382,47 +1413,90 @@
 
         switch (action) {
             case "set-mode":
-                mode = target.getAttribute("data-mode") || "visual";
-                renderPreservingViewport();
+                setMode(target.getAttribute("data-mode") || "visual");
                 return;
             case "add-rule":
-                draft.rules.push({
-                    id: "rule-" + Date.now(),
-                    visibility: "pub",
-                    sort: "alpha",
-                    fmt: "disabled",
-                    target: "auto",
-                    pattern: "",
-                    exclude: "",
-                    cfg: "",
-                    groupOrder: "use,cfg,pub_mod,mod,pub_use",
-                    blankLines: 1,
-                    reexport: "disabled",
-                    header: "",
-                    generatedComment: ""
-                });
+                draft.rules.push(createRule());
                 syncVisualToRaw();
-                renderPreservingViewport();
+                requestInsightsRefresh();
+                scheduleRender();
                 return;
             case "duplicate-rule":
                 if (!Number.isNaN(index) && draft.rules[index]) {
-                    draft.rules.splice(index + 1, 0, Object.assign({}, clone(draft.rules[index]), { id: "rule-" + Date.now() }));
+                    draft.rules.splice(index + 1, 0, Object.assign({}, clone(draft.rules[index]), { id: uid("rule") }));
                     syncVisualToRaw();
-                    renderPreservingViewport();
+                    requestInsightsRefresh();
+                    scheduleRender();
                 }
                 return;
             case "remove-rule":
-                if (!Number.isNaN(index)) {
+                if (!Number.isNaN(index) && draft.rules[index]) {
                     draft.rules.splice(index, 1);
                     syncVisualToRaw();
-                    renderPreservingViewport();
+                    requestInsightsRefresh();
+                    scheduleRender();
                 }
                 return;
+            case "move-rule-up":
+                moveRule(index, index - 1);
+                return;
+            case "move-rule-down":
+                moveRule(index, index + 1);
+                return;
+            case "fix-document":
+                applyRecommendedDocumentFixes();
+                return;
+            case "fix-rule":
+                applyRecommendedRuleFixes(index);
+                return;
+            case "apply-fix":
+                applyFieldFix(
+                    target.getAttribute("data-scope"),
+                    index,
+                    target.getAttribute("data-field"),
+                    decodeDataValue(target.getAttribute("data-value"))
+                );
+                return;
+            case "add-chip": {
+                const chipInput = target.parentElement?.querySelector('[data-role="chip-input"]');
+                if (chipInput instanceof HTMLInputElement) {
+                    commitChipInput(chipInput);
+                }
+                return;
+            }
+            case "remove-chip": {
+                const scope = target.getAttribute("data-chip-scope");
+                const field = target.getAttribute("data-chip-field");
+                const chipValue = decodeDataValue(target.getAttribute("data-chip-value"));
+                const nextValues = (scope === "document"
+                    ? splitChipList(draft[field] || "")
+                    : splitChipList(draft.rules[index]?.[field] || ""))
+                    .filter(value => value !== chipValue);
+                updateChipField(scope, index, field, nextValues);
+                return;
+            }
             case "apply-visual":
+                if (hasDivergedDrafts()) {
+                    const shouldContinue = window.confirm("Raw edits diverge from the visual draft. Apply the visual version anyway?");
+                    if (!shouldContinue) {
+                        return;
+                    }
+                }
+                pushHistorySnapshot("Before visual apply", draft, rawDraftText);
+                acceptIncomingState = true;
+                draft.rawText = rawDraftText || state.rawText || "";
                 vscode.postMessage({ type: "applyVisual", value: draft });
                 return;
             case "apply-raw":
-                vscode.postMessage({ type: "applyRaw", rawText: rawDraftText });
+                if (hasDivergedDrafts()) {
+                    const shouldContinue = window.confirm("Visual edits diverge from the raw draft. Apply the raw version anyway?");
+                    if (!shouldContinue) {
+                        return;
+                    }
+                }
+                pushHistorySnapshot("Before raw apply", draft, rawDraftText);
+                acceptIncomingState = true;
+                vscode.postMessage({ type: "applyRaw", rawText: normalizeDraftWhitespace(rawDraftText) });
                 return;
             case "format-raw":
                 vscode.postMessage({ type: "formatRaw", rawText: rawDraftText });
@@ -430,25 +1504,67 @@
             case "open-raw":
                 vscode.postMessage({ type: "openRaw" });
                 return;
+            case "refresh-insights":
+                requestInsightsRefresh();
+                return;
+            case "run-playground":
+                requestInsightsRefresh();
+                return;
+            case "snapshot":
+                pushHistorySnapshot("Manual snapshot", draft, rawDraftText);
+                scheduleRender();
+                return;
+            case "restore-history":
+                restoreHistoryEntry(Number(target.getAttribute("data-history-index")));
+                return;
             case "reset":
+                if (hasUnsavedChanges()) {
+                    const shouldReset = window.confirm("Discard the current Studio draft and reset to the last saved .rautomod?");
+                    if (!shouldReset) {
+                        return;
+                    }
+                }
                 draft = clone(state);
-                rawDraftText = state.rawText ?? "";
-                rawDirty = false;
-                renderPreservingViewport();
+                rawDraftText = state.rawText || "";
+                rawEditedManually = false;
+                requestInsightsRefresh();
+                scheduleRender();
+                return;
+            case "open-file":
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({ type: "openFile", uri: target.getAttribute("data-uri") });
+                }
+                return;
+            case "reveal-folder":
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({ type: "revealFolder", uri: target.getAttribute("data-uri") });
+                }
                 return;
         }
     });
 
     root.addEventListener("input", event => {
         const target = event.target;
-        if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+        if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) || !draft) {
             return;
         }
 
-        const role = target.getAttribute("data-role");
-        if (role === "raw-editor") {
+        if (target.getAttribute("data-role") === "raw-editor") {
             rawDraftText = target.value;
-            rawDirty = true;
+            rawEditedManually = true;
+            requestInsightsRefresh();
+            scheduleRender();
+            return;
+        }
+
+        if (target.getAttribute("data-role") === "playground-input") {
+            playgroundInput = target.value;
+            persistUiState();
+            requestInsightsRefresh();
+            return;
+        }
+
+        if (target.getAttribute("data-role") === "chip-input") {
             return;
         }
 
@@ -460,33 +1576,80 @@
         }
 
         if (scope === "document") {
-            draft[field] = target.value;
-            syncVisualToRaw();
+            updateDocumentField(field, target.value);
             return;
         }
 
-        if (scope === "rule" && !Number.isNaN(index) && draft.rules[index]) {
-            draft.rules[index][field] = field === "blankLines"
-                ? Math.max(0, Number(target.value) || 0)
-                : target.value;
-            syncVisualToRaw();
-        }
+        updateRuleField(index, field, target.value);
     });
 
-    root.addEventListener("change", event => {
+    root.addEventListener("keydown", event => {
         const target = event.target;
-        if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+        if (!(target instanceof HTMLInputElement) || target.getAttribute("data-role") !== "chip-input") {
             return;
         }
 
-        if (target.getAttribute("data-role") === "raw-editor") {
-            return;
-        }
-
-        if (target.hasAttribute("data-scope") && target.hasAttribute("data-field")) {
-            renderPreservingViewport();
+        if (event.key === "Enter") {
+            event.preventDefault();
+            commitChipInput(target);
         }
     });
+
+    root.addEventListener("focusout", event => {
+        const target = event.target;
+        if (target instanceof HTMLInputElement && target.getAttribute("data-role") === "chip-input" && target.value.trim()) {
+            commitChipInput(target);
+        }
+    });
+
+    root.addEventListener("dragstart", event => {
+        const target = event.target.closest("[data-rule-index]");
+        if (!target) {
+            return;
+        }
+
+        draggingRuleId = target.getAttribute("data-rule-id");
+        event.dataTransfer.effectAllowed = "move";
+    });
+
+    root.addEventListener("dragover", event => {
+        const target = event.target.closest("[data-rule-index]");
+        if (!target || draggingRuleId === null) {
+            return;
+        }
+
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+    });
+
+    root.addEventListener("drop", event => {
+        const target = event.target.closest("[data-rule-index]");
+        if (!target || draggingRuleId === null || !draft) {
+            return;
+        }
+
+        event.preventDefault();
+        const fromIndex = draft.rules.findIndex(rule => rule.id === draggingRuleId);
+        const toIndex = Number(target.getAttribute("data-rule-index"));
+        draggingRuleId = null;
+        moveRule(fromIndex, toIndex);
+    });
+
+    root.addEventListener("dragend", () => {
+        draggingRuleId = null;
+    });
+
+    root.addEventListener("toggle", event => {
+        const details = event.target;
+        if (!(details instanceof HTMLDetailsElement)) {
+            return;
+        }
+
+        const disclosureId = details.getAttribute("data-disclosure-id");
+        if (disclosureId) {
+            setOpenSection(disclosureId, details.open);
+        }
+    }, true);
 
     window.addEventListener("message", event => {
         const message = event.data;
@@ -494,15 +1657,24 @@
             case "setState":
                 setState(message.value);
                 break;
+            case "setInsights":
+                setInsights(message.value);
+                break;
             case "formattedRaw":
-                rawDraftText = message.rawText ?? "";
-                rawDirty = true;
-                renderPreservingViewport();
+                rawDraftText = message.rawText || "";
+                rawEditedManually = true;
+                requestInsightsRefresh();
+                scheduleRender();
                 break;
         }
     });
 
     window.addEventListener("error", event => {
+        vscode.postMessage({
+            type: "logWebviewError",
+            context: "editor",
+            message: event.message || "Unknown webview error."
+        });
         renderRuntimeError(event.message || "Unknown webview error.");
     });
 
@@ -510,9 +1682,14 @@
         const reason = event.reason && event.reason.message
             ? event.reason.message
             : String(event.reason || "Unknown promise rejection.");
+        vscode.postMessage({
+            type: "logWebviewError",
+            context: "editor-promise",
+            message: reason
+        });
         renderRuntimeError(reason);
     });
 
-    root.innerHTML = '<div class="empty-state">Loading Rust AutoMod editor...</div>';
+    renderLoadingSkeleton();
     vscode.postMessage({ type: "ready" });
 })();

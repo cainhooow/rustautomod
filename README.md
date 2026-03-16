@@ -4,7 +4,7 @@
 
 Art produced by [Saki](https://instagram.com/sak1_sk)
 
-Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports richer `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smart `mod.rs` visibility controls plus preview, undo, regenerate, explain, and config-inspection workflows inside VS Code.
+Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports richer `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smart `mod.rs` visibility controls plus preview, undo, regenerate, explain, and Studio-style config workflows inside VS Code.
 
 ## Documentation
 
@@ -21,7 +21,7 @@ Rust Automod is a Visual Studio Code extension that keeps Rust module files in s
 - Can run `cargo fmt` after updates.
 - Adds a dedicated file icon, syntax highlighting, linting, completions, and formatting for `.rautomod`.
 - Opens `.rautomod` in a custom visual editor with `Visual`, `Split`, and `Raw` modes.
-- Includes a workspace-wide Rust AutoMod manager UI for browsing configs and scaffolding new ones.
+- Includes a workspace-wide Rust AutoMod manager UI for browsing configs, filtering audits, and scaffolding new ones.
 - Supports preview/dry run, undo of the last automod action, workspace or folder regeneration, and structured logging.
 - Can explain why a file was registered a certain way and show the effective config that won for a Rust file.
 - Can scaffold a `.rautomod` file and ignore files or folders from the Explorer.
@@ -76,8 +76,14 @@ The visual editor exposes:
 
 - `schema_version`, `strict`, and `extends`
 - rule cards for `visibility`, `sort`, `fmt`, `target`, `pattern`, `exclude`, `cfg`, `group_order`, `blank_lines`, `reexport`, `header`, and `generated_comment`
-- live diagnostics from the extension parser
-- quick actions to duplicate, remove, or add rule blocks
+- live audit and diagnostics feedback from the extension parser
+- inline quick fixes for document and rule fields
+- chip-based editors for `pattern`, `exclude`, `cfg`, and `extends`
+- drag-and-drop rule ordering, plus duplicate, remove, and move actions
+- impact preview showing matched, ignored, shadowed, and uncovered files
+- a matching playground that explains why a path is matched, ignored, or uncovered
+- local snapshot history for the current `.rautomod`
+- real draft-state badges so you can see when Visual and Raw diverge
 - `Format Raw`, `Apply Raw Changes`, and `Open Raw Externally`
 
 ### Manager UI
@@ -87,10 +93,14 @@ Use `Open Rust AutoMod Manager` to open a central panel, or open the Rust AutoMo
 The manager UI gives you:
 
 - a workspace-wide list of `.rautomod` files
-- quick search by path, workspace, or strict mode
-- summary cards for configs, rules, diagnostics, and workspaces
+- quick search by path, workspace, strict mode, or target mode
+- summary cards for configs, rules, diagnostics, uncovered files, and overlaps
 - direct actions to open a config visually or in raw mode
 - scaffold actions for workspace roots
+- bulk actions to scaffold all roots, format all `.rautomod` files, regenerate the workspace, and open configs with diagnostics
+- per-config audit cards with duplicate-rule, overlap, ignored, shadowed, and uncovered signals
+- per-config impact samples with open-file and reveal-folder actions
+- a manager-side why/why-not playground for testing individual paths
 - quick access to the Rust AutoMod log
 
 This manager is meant to feel closer to a product control surface, similar in spirit to a settings UI, while still keeping the actual `.rautomod` file as the source of truth.
@@ -217,6 +227,8 @@ The visual editor is especially useful when:
 - you want to compare multiple rule blocks quickly
 - you want guardrails around valid values such as `visibility`, `sort`, or `target`
 - you want diagnostics visible while editing
+- you want impact preview and rule-playground feedback without leaving the file
+- you want to preserve unmanaged comments while still editing visually
 
 If you want a broader workspace view, run `Open Rust AutoMod Manager` to open the central panel and jump into a config from there.
 
@@ -227,6 +239,12 @@ Place a `.rautomod` file at the root of your Rust project, or inside a subfolder
 The file is now recognized as its own VS Code language, with a dedicated Explorer icon, colors for comments, keys, operators, known values, `cfg(...)` expressions, and list entries. You can run `Format Document` on `.rautomod` files to normalize spacing, assignment style, blank lines, and comma-separated lists, and the extension now provides quick fixes for invalid keys and common missing entries.
 
 If you prefer a GUI instead of editing raw text, open the file in the built-in visual editor. The visual editor still writes back to the same `.rautomod` text file, so Git history, diffs, merges, and manual editing continue to work normally.
+
+Visual saves now try to preserve:
+
+- leading comment blocks
+- unmanaged blocks that are not recognized as Rust AutoMod keys
+- comments attached to managed document/rule blocks
 
 For a line-by-line explanation of every key, precedence rule, and matching behavior, see [docs/RAUTOMOD_REFERENCE.md](docs/RAUTOMOD_REFERENCE.md).
 
@@ -411,6 +429,7 @@ The extension was refactored so each responsibility lives in a smaller module.
 - `yarn lint`
 - `yarn test:unit`
 - `yarn test`
+- `yarn screenshots:studio`
 
 ### Test coverage
 
@@ -420,6 +439,7 @@ The project now includes:
 - unit tests for `mod.rs` content editing
 - unit tests for `.rautomod` formatting
 - config-resolution tests for `.rautomod` inheritance, negation, and excludes
+- config-serialization tests for comment and unmanaged-block preservation
 - extension integration tests for Explorer commands and `files.exclude`
 - extension integration tests for `.rautomod` language detection and formatting
 - extension integration tests for scaffold, ignore, preview, regenerate, undo, and effective config inspection
@@ -432,6 +452,6 @@ The project now includes:
 - `target=lib.rs` and `target=main.rs` are most useful for crate-root style rules.
 - The extension ignores invalid or unsafe paths such as `.git`, `target`, `node_modules`, and similar folders.
 - Some icon themes may override the default `.rautomod` icon contributed by the extension.
-- Visual saves normalize `.rautomod` structure and may rewrite comments or hand-tuned spacing, so use `Raw` or `Split` mode when you want to preserve crafted notes verbatim.
+- Visual saves still normalize managed `.rautomod` structure, but now try to preserve leading comments, unmanaged blocks, and comments attached to managed sections. `Raw` and `Split` are still the safest modes when exact hand-tuned formatting matters.
 
 Contributions, issues, and feature requests are welcome.

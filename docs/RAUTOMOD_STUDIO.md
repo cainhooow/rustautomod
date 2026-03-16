@@ -69,7 +69,13 @@ What you can do:
 - add a new rule block
 - duplicate an existing rule block
 - remove a rule block
-- inspect diagnostics while editing
+- drag and drop rules to reorder them
+- inspect diagnostics and audit feedback while editing
+- use inline quick fixes for invalid `strict`, `sort`, `target`, `group_order`, and related fields
+- edit `pattern`, `exclude`, `cfg`, and `extends` through chip-style inputs
+- preview impact across the current config subtree
+- run a matching playground to see why a path matched or missed
+- create local history snapshots for the current `.rautomod`
 - apply the generated normalized `.rautomod`
 
 #### Split mode
@@ -115,15 +121,21 @@ What it shows:
 - total number of configs
 - total number of rule blocks
 - diagnostics across configs
+- uncovered, shadowed, ignored, and overlap signals
 - workspace folders
 - every detected `.rautomod`
 
 What you can do from the manager:
 
-- search configs by path, workspace name, or strict mode
+- search configs by path, workspace name, strict mode, or target mode
+- filter configs by health and strictness
 - open a config in the visual editor
 - open a config in raw mode
 - scaffold a new `.rautomod` at a workspace root
+- scaffold all roots, format all `.rautomod` files, and regenerate the workspace
+- open configs that currently have diagnostics
+- inspect sampled impact items and jump to source/target files
+- run a per-config why/why-not playground without leaving the manager
 - jump to the Rust AutoMod log
 
 ## How the visual layer relates to the raw file
@@ -150,10 +162,10 @@ That means:
 
 The Studio layer is already usable, but there are a few current trade-offs:
 
-- visual saves normalize the file layout
-- visual saves may rewrite comments and hand-tuned spacing
-- raw mode is the safest place for comment-heavy or highly curated configs
-- the manager focuses on config discovery and opening flows, not yet on full rule impact simulation
+- visual saves normalize the managed file layout
+- Studio now preserves leading comments, unmanaged blocks, and comments attached to managed blocks, but exact manual spacing can still be normalized
+- raw mode is still the safest place for comment-heavy or highly curated configs
+- local history is session-local inside the Studio UI, not a replacement for Git history
 
 In practice:
 
@@ -183,8 +195,9 @@ In practice:
 
 1. Open the file in `Split`
 2. Use visual mode to understand the structure
-3. Finish in `Raw`
-4. Use `Format Raw` only when you are comfortable with normalization
+3. Check whether Visual and Raw diverged before applying one side over the other
+4. Finish in `Raw` when exact manual spacing matters
+5. Use `Format Raw` only when you are comfortable with normalization
 
 ## Commands related to Studio
 

@@ -24,6 +24,33 @@ export const VALID_TARGET: readonly AutomodTarget[] = ["auto", "mod.rs", "lib.rs
 export const VALID_GROUP_ORDER: readonly AutomodGroupOrder[] = ["cfg", "pub_mod", "mod", "pub_use", "use"];
 export const VALID_STRICT_MODE: readonly AutomodStrictMode[] = ["off", "warn", "error"];
 export const DEFAULT_GROUP_ORDER: AutomodGroupOrder[] = ["use", "cfg", "pub_mod", "mod", "pub_use"];
+const DOCUMENT_KEYS = new Set(["schema_version", "strict", "extends"]);
+const RULE_KEYS = new Set([
+    "visibility",
+    "sort",
+    "fmt",
+    "target",
+    "pattern",
+    "exclude",
+    "cfg",
+    "group_order",
+    "blank_lines",
+    "reexport",
+    "header",
+    "generated_comment"
+]);
+
+export interface AutomodRuleEvaluation {
+    matched: boolean;
+    ignored: boolean;
+    matchedPatterns: string[];
+    excludedPatterns: string[];
+    negativePatterns: string[];
+    positivePatterns: string[];
+    relativePath: string;
+    sourceDir: string;
+    reason: "matched_default" | "matched_pattern" | "excluded_by_negative_pattern" | "no_positive_pattern_match";
+}
 
 export function parseRautomod(content: string): AutomodRule[] {
     return parseRautomodDocument(content).rules;
@@ -196,22 +223,12 @@ export function parseRautomodDocument(content: string, sourcePath?: string): Aut
     };
 }
 
-export function serializeRautomodDocument(document: AutomodConfigDocument): string {
-    const lines: string[] = [];
-
-    lines.push(`schema_version=${document.schemaVersion || "1"}`);
-    lines.push(`strict=${document.strictMode || "warn"}`);
-
-    if (document.extendsPaths.length > 0) {
-        lines.push(`extends=${document.extendsPaths.join(",")}`);
+export function serializeRautomodDocument(document: AutomodConfigDocument, existingRawText?: string): string {
+    if (!existingRawText?.trim()) {
+        return formatRautomod(serializeDocumentWithoutPreservation(document));
     }
 
-    for (const rule of document.rules) {
-        lines.push("");
-        lines.push(...serializeRule(rule));
-    }
-
-    return formatRautomod(lines.join("\n"));
+    return formatRautomod(serializeDocumentWithPreservedBlocks(document, existingRawText));
 }
 
 export function findConfigForFile(rules: AutomodRule[], filePath: string): AutomodRule | null {
@@ -264,6 +281,38 @@ export async function resolveProjectConfigAsync(filePath: string): Promise<Resol
 export async function getProjectConfigAsync(filePath: string): Promise<AutomodRule> {
     const resolved = await resolveProjectConfigAsync(filePath);
     return resolved.rule;
+}
+
+export async function resolveRautomodDocumentAsync(
+    content: string,
+    sourcePath?: string
+): Promise<AutomodConfigDocument> {
+    const current = parseRautomodDocument(content, sourcePath);
+    if (!sourcePath) {
+        return current;
+    }
+
+    const extendedDocuments = await Promise.all(current.extendsPaths.map(async extendsPath => {
+        const resolvedPath = resolveExtendedConfigPath(sourcePath, extendsPath);
+        if (!resolvedPath || !await fileExists(resolvedPath)) {
+            return createMissingExtendsDocument(sourcePath, extendsPath);
+        }
+
+        return loadConfigDocumentAsync(resolvedPath, new Set<string>([path.normalize(sourcePath)]));
+    }));
+
+    return mergeExtendedDocuments(current, extendedDocuments);
+}
+
+export function resolveConfigForFileFromDocument(
+    document: AutomodConfigDocument,
+    filePath: string
+): ResolvedAutomodConfig | null {
+    return resolveFromDocument(document, filePath);
+}
+
+export function evaluateAutomodRule(rule: AutomodRule, filePath: string): AutomodRuleEvaluation {
+    return evaluateRule(rule, filePath);
 }
 
 function createDefaultResolvedConfig(configuration: vscode.WorkspaceConfiguration): ResolvedAutomodConfig {
@@ -346,7 +395,7 @@ function resolveFromDocument(document: AutomodConfigDocument, filePath: string):
     return null;
 }
 
-function evaluateRule(rule: AutomodRule, filePath: string): { matched: boolean, ignored: boolean, matchedPatterns: string[] } {
+function evaluateRule(rule: AutomodRule, filePath: string): AutomodRuleEvaluation {
     const normalizedPath = normalizePath(filePath);
     const fileName = path.basename(normalizedPath);
     const sourceDir = rule.sourcePath ? path.dirname(rule.sourcePath) : path.dirname(normalizedPath);
@@ -359,26 +408,58 @@ function evaluateRule(rule: AutomodRule, filePath: string): { matched: boolean, 
     const positivePatterns = patterns.filter(pattern => !pattern.startsWith("!"));
 
     if (negativePatterns.some(pattern => patternMatchesFile(pattern, candidates))) {
-        return { matched: false, ignored: false, matchedPatterns: [] };
+        return {
+            matched: false,
+            ignored: false,
+            matchedPatterns: [],
+            excludedPatterns: excludes,
+            negativePatterns,
+            positivePatterns,
+            relativePath,
+            sourceDir,
+            reason: "excluded_by_negative_pattern"
+        };
     }
 
     if (positivePatterns.length > 0) {
         const matchedPatterns = positivePatterns.filter(pattern => patternMatchesFile(pattern, candidates));
         if (matchedPatterns.length === 0) {
-            return { matched: false, ignored: false, matchedPatterns: [] };
+            return {
+                matched: false,
+                ignored: false,
+                matchedPatterns: [],
+                excludedPatterns: excludes,
+                negativePatterns,
+                positivePatterns,
+                relativePath,
+                sourceDir,
+                reason: "no_positive_pattern_match"
+            };
         }
 
         return {
             matched: true,
             ignored: excludes.length > 0,
-            matchedPatterns
+            matchedPatterns,
+            excludedPatterns: excludes,
+            negativePatterns,
+            positivePatterns,
+            relativePath,
+            sourceDir,
+            reason: "matched_pattern"
         };
     }
 
     return {
         matched: true,
         ignored: excludes.length > 0,
-        matchedPatterns: []
+        matchedPatterns: [],
+        excludedPatterns: excludes,
+        negativePatterns,
+        positivePatterns,
+        relativePath,
+        sourceDir,
+        reason: "matched_default"
     };
 }
 
@@ -540,6 +621,30 @@ function splitSimpleList(value: string): string[] {
     return value.split(",").map(entry => entry.trim()).filter(Boolean);
 }
 
+function serializeDocumentWithoutPreservation(document: AutomodConfigDocument): string {
+    const lines = serializeDocumentHeaderLines(document);
+
+    for (const rule of document.rules) {
+        lines.push("");
+        lines.push(...serializeRule(rule));
+    }
+
+    return lines.join("\n");
+}
+
+function serializeDocumentHeaderLines(document: AutomodConfigDocument): string[] {
+    const lines = [
+        `schema_version=${document.schemaVersion || "1"}`,
+        `strict=${document.strictMode || "warn"}`
+    ];
+
+    if (document.extendsPaths.length > 0) {
+        lines.push(`extends=${document.extendsPaths.join(",")}`);
+    }
+
+    return lines;
+}
+
 function serializeRule(rule: AutomodRule): string[] {
     const lines = [
         `visibility=${rule.visibility}`,
@@ -573,6 +678,146 @@ function serializeRule(rule: AutomodRule): string[] {
     }
 
     return lines;
+}
+
+interface PreservedSourceBlock {
+    kind: "document" | "rule" | "unmanaged";
+    preservedLines: string[];
+    rawLines: string[];
+}
+
+function serializeDocumentWithPreservedBlocks(document: AutomodConfigDocument, existingRawText: string): string {
+    const blocks = parsePreservedSourceBlocks(existingRawText);
+    const outputBlocks: string[][] = [];
+    let documentEmitted = false;
+    let ruleIndex = 0;
+
+    for (const block of blocks) {
+        if (block.kind === "document" && !documentEmitted) {
+            outputBlocks.push(buildPreservedManagedBlock(block.preservedLines, serializeDocumentHeaderLines(document)));
+            documentEmitted = true;
+            continue;
+        }
+
+        if (block.kind === "rule") {
+            if (ruleIndex < document.rules.length) {
+                outputBlocks.push(buildPreservedManagedBlock(block.preservedLines, serializeRule(document.rules[ruleIndex])));
+                ruleIndex += 1;
+                continue;
+            }
+
+            if (block.preservedLines.length > 0) {
+                outputBlocks.push(block.preservedLines);
+            }
+            continue;
+        }
+
+        if (block.rawLines.length > 0) {
+            outputBlocks.push(block.rawLines);
+        }
+    }
+
+    if (!documentEmitted) {
+        const documentLines = serializeDocumentHeaderLines(document);
+        const insertionIndex = outputBlocks.findIndex(block => block.some(line => extractRecognizedKey(line) !== null));
+        if (insertionIndex === -1) {
+            outputBlocks.push(documentLines);
+        } else {
+            outputBlocks.splice(insertionIndex, 0, documentLines);
+        }
+    }
+
+    while (ruleIndex < document.rules.length) {
+        outputBlocks.push(serializeRule(document.rules[ruleIndex]));
+        ruleIndex += 1;
+    }
+
+    return outputBlocks
+        .filter(block => block.some(line => line.trim() !== ""))
+        .map(block => block.join("\n"))
+        .join("\n\n");
+}
+
+function buildPreservedManagedBlock(preservedLines: string[], managedLines: string[]): string[] {
+    return [
+        ...preservedLines.filter(line => line.trim() !== ""),
+        ...managedLines
+    ];
+}
+
+function parsePreservedSourceBlocks(rawText: string): PreservedSourceBlock[] {
+    const normalized = rawText.replace(/\r\n/g, "\n").trim();
+    if (!normalized) {
+        return [];
+    }
+
+    return normalized
+        .split(/\n\s*\n/g)
+        .map(blockText => classifyPreservedSourceBlock(blockText))
+        .filter(block => block.rawLines.length > 0 || block.preservedLines.length > 0);
+}
+
+function classifyPreservedSourceBlock(blockText: string): PreservedSourceBlock {
+    const rawLines = blockText.split("\n");
+    let documentKeys = 0;
+    let ruleKeys = 0;
+    const preservedLines: string[] = [];
+
+    for (const line of rawLines) {
+        const key = extractRecognizedKey(line);
+        if (!key) {
+            preservedLines.push(line);
+            continue;
+        }
+
+        if (DOCUMENT_KEYS.has(key)) {
+            documentKeys += 1;
+            continue;
+        }
+
+        if (RULE_KEYS.has(key)) {
+            ruleKeys += 1;
+            continue;
+        }
+
+        preservedLines.push(line);
+    }
+
+    if (ruleKeys > 0) {
+        return {
+            kind: "rule",
+            preservedLines,
+            rawLines
+        };
+    }
+
+    if (documentKeys > 0) {
+        return {
+            kind: "document",
+            preservedLines,
+            rawLines
+        };
+    }
+
+    return {
+        kind: "unmanaged",
+        preservedLines,
+        rawLines
+    };
+}
+
+function extractRecognizedKey(line: string): string | null {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+        return null;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) {
+        return null;
+    }
+
+    return trimmed.substring(0, separatorIndex).trim();
 }
 
 function normalizePath(filePath: string): string {

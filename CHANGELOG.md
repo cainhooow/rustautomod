@@ -2,6 +2,35 @@
 
 ## [Released]
 
+### 1.6.0
+
+This release turns Rust AutoMod Studio into a deeper configuration surface, with comment-preserving visual saves, real draft state tracking, richer impact/audit tooling, and a more capable manager UI.
+
+#### Added
+
+- Visual editor support for preserving unmanaged comment blocks and non-managed sections when saving `.rautomod`.
+- Real Studio draft state badges for saved, dirty, and diverged Visual/Raw edits.
+- Local snapshot history inside the `.rautomod` visual editor.
+- Impact preview and matching playground directly inside the `.rautomod` visual editor.
+- Drag-and-drop rule reordering plus inline quick fixes for common rule/document mistakes.
+- Workspace manager filters for strict mode, target mode, and config health.
+- Manager-side audit summaries, sampled impact cards, and per-config why/why-not playgrounds.
+- `screenshots:studio` script for regenerating the README Studio images.
+- GitHub Actions workflow to compile, lint, test, and refresh Studio screenshots on CI.
+
+#### Changed
+
+- Studio cards now expose chip-based editing for `pattern`, `exclude`, `cfg`, and `extends`.
+- Advanced rule settings moved into collapsible sections to keep the main editor cleaner.
+- The manager UI now behaves more like a workspace audit console than a simple list of `.rautomod` files.
+- The README and Studio docs now document the richer visual workflows and manager capabilities.
+
+#### Fixed
+
+- Visual saves no longer force leading unmanaged comment blocks to move below regenerated config headers.
+- Custom editor and manager refresh flows now guard against disposed webviews during teardown.
+- The screenshot generator now understands the richer Studio state used by the latest UI.
+
 ### 1.5.0
 
 This release introduces Rust AutoMod Studio for `.rautomod`, adding a visual editing experience and a workspace manager UI while keeping the raw `.rautomod` file as the real source of truth.

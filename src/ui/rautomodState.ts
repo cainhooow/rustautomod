@@ -86,7 +86,7 @@ export function serializeViewModelToRawText(viewModel: RautomodDocumentViewModel
         rules: viewModel.rules.map(toAutomodRule)
     };
 
-    return serializeRautomodDocument(document);
+    return serializeRautomodDocument(document, viewModel.rawText);
 }
 
 export async function collectRautomodManagerState(): Promise<RautomodManagerState> {
