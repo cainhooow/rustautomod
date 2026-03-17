@@ -3,7 +3,7 @@
     const root = document.getElementById("root");
     const restored = vscode.getState() || {};
 
-    let state = { configs: [], workspaceFolders: [], auditSummary: {} };
+    let state = { configs: [], workspaceFolders: [], auditSummary: {}, moduleTree: [] };
     let search = restored.search || "";
     let strictFilter = restored.strictFilter || "all";
     let targetFilter = restored.targetFilter || "all";
@@ -62,7 +62,7 @@
     }
 
     function setState(nextState) {
-        state = nextState || { configs: [], workspaceFolders: [], auditSummary: {} };
+        state = nextState || { configs: [], workspaceFolders: [], auditSummary: {}, moduleTree: [] };
         render();
     }
 
@@ -187,8 +187,8 @@
                 </summary>
                 <div class="disclosure-body">
                     <div class="card-actions">
-                        <button class="button primary" data-action="open-visual" data-index="${index}">Open Visual</button>
-                        <button class="button ghost" data-action="open-raw" data-index="${index}">Open Raw</button>
+                        <button class="button primary" data-action="open-visual" data-uri="${escapeHtml(config.uri)}">Open Visual</button>
+                        <button class="button ghost" data-action="open-raw" data-uri="${escapeHtml(config.uri)}">Open Raw</button>
                         <button class="button ghost" data-action="reveal-folder" data-uri="${escapeHtml(config.folderUri)}">Open Folder</button>
                     </div>
                     <div class="summary-grid">
@@ -240,6 +240,57 @@
                     </section>
                 </div>
             </details>
+        `;
+    }
+
+    function renderModuleTreeNode(node, depth) {
+        const indentation = Math.max(0, depth) * 18;
+        return `
+            <div class="module-tree-node" style="--tree-depth:${indentation}px">
+                <div class="module-tree-node-main">
+                    <div>
+                        <strong>${escapeHtml(node.name)}</strong>
+                        <div class="helper">${escapeHtml(node.relativePath)}</div>
+                    </div>
+                    <div class="tag-row">
+                        <span class="badge">${escapeHtml(node.layout)}</span>
+                        ${node.visibility ? `<span class="badge">${escapeHtml(node.visibility)}</span>` : ""}
+                    </div>
+                </div>
+                <div class="card-actions">
+                    ${node.sourceFileUri ? `<button class="mini-button" data-action="open-file" data-uri="${escapeHtml(node.sourceFileUri)}">Open</button>` : ""}
+                    ${node.childContainerUri ? `<button class="mini-button" data-action="create-module-pair" data-uri="${escapeHtml(node.childContainerUri)}">New Child</button>` : ""}
+                    ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="pub">pub</button>` : ""}
+                    ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="pub(crate)">pub(crate)</button>` : ""}
+                    ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="private">private</button>` : ""}
+                    ${node.movableToCrateRoot && node.sourceFileUri ? `<button class="mini-button" data-action="move-module-to-crate-root" data-uri="${escapeHtml(node.sourceFileUri)}">Move to Crate Root</button>` : ""}
+                </div>
+                ${node.children && node.children.length > 0 ? `
+                    <div class="module-tree-children">
+                        ${node.children.map(child => renderModuleTreeNode(child, depth + 1)).join("")}
+                    </div>
+                ` : ""}
+            </div>
+        `;
+    }
+
+    function renderModuleTreeWorkspace(workspaceTree) {
+        return `
+            <article class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>${escapeHtml(workspaceTree.workspaceName)}</h2>
+                        <div class="helper">Tree built from crate roots and current module declarations.</div>
+                    </div>
+                    <button class="mini-button" data-action="reveal-folder" data-uri="${escapeHtml(workspaceTree.workspaceUri)}">Reveal Workspace</button>
+                </div>
+                <div class="module-tree-root">
+                    ${workspaceTree.roots && workspaceTree.roots.length > 0
+                        ? workspaceTree.roots.map(rootNode => renderModuleTreeNode(rootNode, 0)).join("")
+                        : `<div class="empty-state small">No crate roots were found under this workspace yet.</div>`
+                    }
+                </div>
+            </article>
         `;
     }
 
@@ -339,6 +390,20 @@
                         ${configs.length > 0 ? configs.map(renderConfigCard).join("") : '<div class="empty-state">No .rautomod matched your filters. Clear the filters or scaffold a workspace root.</div>'}
                     </div>
                 </section>
+                <section>
+                    <div class="section-title">
+                        <div>
+                            <h2>Module Tree</h2>
+                            <p>Visual hierarchy built from the actual module declarations, with quick actions for visibility and child creation.</p>
+                        </div>
+                    </div>
+                    <div class="stack">
+                        ${(state.moduleTree || []).length > 0
+                            ? state.moduleTree.map(renderModuleTreeWorkspace).join("")
+                            : '<div class="empty-state">Open a Rust workspace with crate roots to visualize the module tree here.</div>'
+                        }
+                    </div>
+                </section>
             </div>
         `;
     }
@@ -354,7 +419,6 @@
         }
 
         const action = target.getAttribute("data-action");
-        const index = Number(target.getAttribute("data-index"));
         const workspaceIndex = Number(target.getAttribute("data-workspace-index"));
 
         switch (action) {
@@ -368,13 +432,13 @@
                 vscode.postMessage({ type: "openLog" });
                 return;
             case "open-visual":
-                if (!Number.isNaN(index) && state.configs[index]) {
-                    vscode.postMessage({ type: "openVisual", uri: state.configs[index].uri });
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({ type: "openVisual", uri: target.getAttribute("data-uri") });
                 }
                 return;
             case "open-raw":
-                if (!Number.isNaN(index) && state.configs[index]) {
-                    vscode.postMessage({ type: "openRaw", uri: state.configs[index].uri });
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({ type: "openRaw", uri: target.getAttribute("data-uri") });
                 }
                 return;
             case "open-file":
@@ -394,6 +458,25 @@
                 return;
             case "scaffold-all":
                 vscode.postMessage({ type: "scaffoldAll" });
+                return;
+            case "create-module-pair":
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({ type: "createModulePair", uri: target.getAttribute("data-uri") });
+                }
+                return;
+            case "set-module-visibility":
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({
+                        type: "setModuleVisibility",
+                        uri: target.getAttribute("data-uri"),
+                        visibility: target.getAttribute("data-visibility")
+                    });
+                }
+                return;
+            case "move-module-to-crate-root":
+                if (target.getAttribute("data-uri")) {
+                    vscode.postMessage({ type: "moveModuleToCrateRoot", uri: target.getAttribute("data-uri") });
+                }
                 return;
             case "format-all":
                 vscode.postMessage({ type: "formatAll" });

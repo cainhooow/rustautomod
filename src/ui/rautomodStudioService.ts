@@ -13,10 +13,14 @@ import {
 } from "../automod/automodConfigFile";
 import { buildModDeclarations } from "../automod/modDeclarations";
 import {
+    fileExists,
     isSpecialRustFile,
+    isModulePairRegistrationFile,
+    resolveSourceDirectoryForRegistrationFile,
     resolveModuleRegistrationFileForTarget
 } from "../automod/modFileSystem";
 import { isBlacklistedPath } from "../utils/pathValidator";
+import { parseManagedDeclarations } from "../automod/modDeclarations";
 
 export interface RautomodImpactItem {
     fileUri: string;
@@ -117,6 +121,29 @@ export interface RautomodManagerState {
         shadowedFiles: number;
         uncoveredFiles: number;
     };
+    moduleTree: RautomodWorkspaceModuleTree[];
+}
+
+export interface RautomodModuleTreeNode {
+    id: string;
+    name: string;
+    relativePath: string;
+    sourceFileUri?: string;
+    sourceFilePath?: string;
+    declarationFileUri: string;
+    visibility?: string;
+    kind: "crate" | "module";
+    layout: "crate_root" | "classic" | "modern" | "leaf" | "missing";
+    canCreateChild: boolean;
+    movableToCrateRoot: boolean;
+    childContainerUri?: string;
+    children: RautomodModuleTreeNode[];
+}
+
+export interface RautomodWorkspaceModuleTree {
+    workspaceName: string;
+    workspaceUri: string;
+    roots: RautomodModuleTreeNode[];
 }
 
 export async function collectRautomodEditorInsights(
@@ -203,7 +230,8 @@ export async function collectRautomodManagerState(): Promise<RautomodManagerStat
             ignoredFiles: configs.reduce((sum, config) => sum + config.audit.ignoredFileCount, 0),
             shadowedFiles: configs.reduce((sum, config) => sum + config.audit.shadowedFileCount, 0),
             uncoveredFiles: configs.reduce((sum, config) => sum + config.audit.uncoveredFileCount, 0)
-        }
+        },
+        moduleTree: await Promise.all((vscode.workspace.workspaceFolders ?? []).map(collectWorkspaceModuleTree))
     };
 }
 
@@ -514,6 +542,197 @@ async function collectRustFilesUnder(rootFolderPath: string): Promise<string[]> 
 
     await walk(rootFolderPath);
     return rustFiles.sort();
+}
+
+async function collectWorkspaceModuleTree(
+    workspaceFolder: vscode.WorkspaceFolder
+): Promise<RautomodWorkspaceModuleTree> {
+    const crateRoots = await collectCrateRootFiles(workspaceFolder.uri.fsPath);
+    const roots = await Promise.all(crateRoots.map(crateRoot =>
+        buildModuleTreeFromRegistrationFile(
+            crateRoot,
+            workspaceFolder.uri.fsPath,
+            {
+                id: crateRoot,
+                name: path.basename(crateRoot, ".rs"),
+                relativePath: normalizePath(path.relative(workspaceFolder.uri.fsPath, crateRoot)),
+                declarationFilePath: crateRoot,
+                declarationFileUri: vscode.Uri.file(crateRoot).toString(),
+                kind: "crate" as const,
+                layout: "crate_root" as const,
+                visibility: undefined,
+                sourceFilePath: crateRoot,
+                sourceFileUri: vscode.Uri.file(crateRoot).toString(),
+                childContainerPath: path.dirname(crateRoot),
+                canCreateChild: true,
+                movableToCrateRoot: false
+            }
+        )
+    ));
+
+    return {
+        workspaceName: workspaceFolder.name,
+        workspaceUri: workspaceFolder.uri.toString(),
+        roots
+    };
+}
+
+interface TreeBuildContext {
+    id: string;
+    name: string;
+    relativePath: string;
+    declarationFilePath: string;
+    declarationFileUri: string;
+    kind: "crate" | "module";
+    layout: RautomodModuleTreeNode["layout"];
+    visibility?: string;
+    sourceFilePath?: string;
+    sourceFileUri?: string;
+    childContainerPath?: string;
+    canCreateChild: boolean;
+    movableToCrateRoot: boolean;
+}
+
+async function buildModuleTreeFromRegistrationFile(
+    registrationFilePath: string,
+    workspaceRootPath: string,
+    context: TreeBuildContext
+): Promise<RautomodModuleTreeNode> {
+    const content = await readFileIfExists(registrationFilePath) ?? "";
+    const declarations = parseManagedDeclarations(content.split(/\r?\n/))
+        .filter(declaration => declaration.kind === "mod");
+
+    const children = await Promise.all(declarations.map(async declaration => {
+        const childSource = await resolveChildModuleSourcePath(registrationFilePath, declaration.moduleName);
+        const relativePath = normalizePath(path.relative(workspaceRootPath, childSource?.filePath ?? path.join(await resolveSourceDirectoryForRegistrationFile(registrationFilePath), `${declaration.moduleName}.rs`)));
+        const nextContext: TreeBuildContext = {
+            id: childSource?.filePath ?? `${registrationFilePath}:${declaration.moduleName}`,
+            name: declaration.moduleName,
+            relativePath,
+            declarationFilePath: registrationFilePath,
+            declarationFileUri: vscode.Uri.file(registrationFilePath).toString(),
+            kind: "module",
+            layout: childSource?.layout ?? "missing",
+            visibility: declaration.visibility,
+            sourceFilePath: childSource?.filePath,
+            sourceFileUri: childSource?.filePath ? vscode.Uri.file(childSource.filePath).toString() : undefined,
+            childContainerPath: childSource?.childContainerPath,
+            canCreateChild: Boolean(childSource?.childContainerPath),
+            movableToCrateRoot: Boolean(childSource?.filePath && childSource.layout === "leaf")
+        };
+
+        if (childSource?.registrationFilePath) {
+            return buildModuleTreeFromRegistrationFile(childSource.registrationFilePath, workspaceRootPath, nextContext);
+        }
+
+        return {
+            id: nextContext.id,
+            name: nextContext.name,
+            relativePath: nextContext.relativePath,
+            sourceFileUri: nextContext.sourceFileUri,
+            sourceFilePath: nextContext.sourceFilePath,
+            declarationFileUri: nextContext.declarationFileUri,
+            visibility: nextContext.visibility,
+            kind: nextContext.kind,
+            layout: nextContext.layout,
+            canCreateChild: nextContext.canCreateChild,
+            movableToCrateRoot: nextContext.movableToCrateRoot,
+            childContainerUri: nextContext.childContainerPath ? vscode.Uri.file(nextContext.childContainerPath).toString() : undefined,
+            children: []
+        } satisfies RautomodModuleTreeNode;
+    }));
+
+    return {
+        id: context.id,
+        name: context.name,
+        relativePath: context.relativePath,
+        sourceFileUri: context.sourceFileUri,
+        sourceFilePath: context.sourceFilePath,
+        declarationFileUri: context.declarationFileUri,
+        visibility: context.visibility,
+        kind: context.kind,
+        layout: context.layout,
+        canCreateChild: context.canCreateChild,
+        movableToCrateRoot: context.movableToCrateRoot,
+        childContainerUri: context.childContainerPath ? vscode.Uri.file(context.childContainerPath).toString() : undefined,
+        children
+    };
+}
+
+async function resolveChildModuleSourcePath(
+    registrationFilePath: string,
+    moduleName: string
+): Promise<{
+    filePath?: string;
+    registrationFilePath?: string;
+    layout: RautomodModuleTreeNode["layout"];
+    childContainerPath?: string;
+} | null> {
+    const sourceDirectory = await resolveSourceDirectoryForRegistrationFile(registrationFilePath);
+    const leafFilePath = path.join(sourceDirectory, `${moduleName}.rs`);
+    const classicFilePath = path.join(sourceDirectory, moduleName, "mod.rs");
+
+    if (await fileExists(leafFilePath)) {
+        const isPair = await isModulePairRegistrationFile(leafFilePath);
+        return {
+            filePath: leafFilePath,
+            registrationFilePath: isPair ? leafFilePath : undefined,
+            layout: isPair ? "modern" : "leaf",
+            childContainerPath: isPair ? path.join(sourceDirectory, moduleName) : undefined
+        };
+    }
+
+    if (await fileExists(classicFilePath)) {
+        return {
+            filePath: classicFilePath,
+            registrationFilePath: classicFilePath,
+            layout: "classic",
+            childContainerPath: path.dirname(classicFilePath)
+        };
+    }
+
+    return {
+        layout: "missing"
+    };
+}
+
+async function collectCrateRootFiles(workspaceRootPath: string): Promise<string[]> {
+    const crateRoots: string[] = [];
+
+    async function walk(directory: string): Promise<void> {
+        const entries = await fs.readdir(directory, { withFileTypes: true });
+
+        for (const entry of entries) {
+            const candidatePath = path.join(directory, entry.name);
+            if (isBlacklistedPath(candidatePath)) {
+                continue;
+            }
+
+            if (entry.isDirectory()) {
+                await walk(candidatePath);
+                continue;
+            }
+
+            if (!entry.isFile()) {
+                continue;
+            }
+
+            if (entry.name === "lib.rs" || entry.name === "main.rs") {
+                crateRoots.push(path.normalize(candidatePath));
+            }
+        }
+    }
+
+    await walk(workspaceRootPath);
+    return crateRoots.sort();
+}
+
+async function readFileIfExists(filePath: string): Promise<string | null> {
+    try {
+        return await fs.readFile(filePath, "utf8");
+    } catch {
+        return null;
+    }
 }
 
 async function resolveTargetFilePathForRule(folderPath: string, rule: AutomodRule): Promise<string | null> {

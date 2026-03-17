@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
-import { openAutomodLog, regenerateModules, scaffoldRautomod } from "../automod/automodModFile";
+import {
+    createModulePair,
+    moveModuleToCrateRoot,
+    openAutomodLog,
+    regenerateModules,
+    scaffoldRautomod,
+    setModuleVisibility
+} from "../automod/automodModFile";
 import { formatRautomod } from "../linting/rautomodFormatter";
 import {
     collectManagerPlaygroundResult,
@@ -217,6 +224,7 @@ async function handleManagerMessage(
         uri?: string;
         inputPath?: string;
         workspaceUri?: string;
+        visibility?: "pub" | "pub(crate)" | "private";
         message?: string;
         context?: string;
     };
@@ -257,6 +265,27 @@ async function handleManagerMessage(
             return;
         case "scaffold":
             await scaffoldRautomod(vscode.Uri.parse(String(payload.uri)));
+            await refresh();
+            return;
+        case "createModulePair":
+            if (!payload.uri) {
+                return;
+            }
+            await createModulePair(vscode.Uri.parse(payload.uri));
+            await refresh();
+            return;
+        case "setModuleVisibility":
+            if (!payload.uri) {
+                return;
+            }
+            await setModuleVisibility(vscode.Uri.parse(payload.uri), payload.visibility);
+            await refresh();
+            return;
+        case "moveModuleToCrateRoot":
+            if (!payload.uri) {
+                return;
+            }
+            await moveModuleToCrateRoot(vscode.Uri.parse(payload.uri));
             await refresh();
             return;
         case "scaffoldAll":

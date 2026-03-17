@@ -2,6 +2,7 @@ import vscode from "vscode";
 import path from "path";
 import { promises as fs } from "fs";
 import {
+    AutomodVisibility,
     AutomodRule,
     ResolvedAutomodConfig
 } from "../interfaces/automodconf";
@@ -14,17 +15,23 @@ import {
 import {
     addModDeclarations,
     removeModDeclarations,
-    sortModDeclarationsInContent
+    sortModDeclarationsInContent,
+    updateModuleVisibility
 } from "./modContentEditor";
 import { buildModDeclarations, parseModDeclarations } from "./modDeclarations";
 import {
+    detectRustModuleLayout,
     fileExists,
+    isModulePairRegistrationFile,
     listDirectoriesRecursively,
     listImmediateModuleFolders,
     listImmediateRustModules,
     readTextFileIfExists,
     resolveModuleRegistrationFile,
+    resolveModuleRegistrationTarget,
     resolveModuleRegistrationFileForTarget,
+    resolveRootModuleRegistrationFile,
+    resolveSourceDirectoryForRegistrationFile,
     writeTextFile
 } from "./modFileSystem";
 import { AutomodRuntime } from "./automodRuntime";
@@ -187,6 +194,154 @@ export async function scaffoldRautomod(resource?: vscode.Uri): Promise<void> {
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(configPath));
 }
 
+export async function createModulePair(resource?: vscode.Uri): Promise<void> {
+    const baseFolderUri = await resolveFolderResourceUri(resource);
+    if (!baseFolderUri) {
+        vscode.window.showInformationMessage("Select a folder or Rust file before creating a module pair.");
+        return;
+    }
+
+    const moduleName = await vscode.window.showInputBox({
+        prompt: "Rust module name",
+        placeHolder: "orders",
+        validateInput(value) {
+            return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value.trim())
+                ? null
+                : "Use a valid Rust module identifier.";
+        }
+    });
+
+    if (!moduleName) {
+        return;
+    }
+
+    const visibility = await pickVisibility();
+    if (!visibility) {
+        return;
+    }
+
+    const moduleLayout = await detectRustModuleLayout(baseFolderUri.fsPath);
+    const moduleFolderPath = path.join(baseFolderUri.fsPath, moduleName);
+    const moduleFilePath = moduleLayout === "modern"
+        ? path.join(baseFolderUri.fsPath, `${moduleName}.rs`)
+        : path.join(moduleFolderPath, "mod.rs");
+
+    if (await fileExists(moduleFilePath)) {
+        vscode.window.showWarningMessage(`Rust AutoMod found an existing module file at ${moduleFilePath}.`);
+        return;
+    }
+
+    await fs.mkdir(moduleFolderPath, { recursive: true });
+    await writeTextFile(moduleFilePath, "");
+
+    const parentConfig = await resolveProjectConfigAsync(moduleFilePath);
+    const parentTarget = await resolveModuleRegistrationFile(baseFolderUri.fsPath);
+    if (parentTarget) {
+        const change = await planEnsureModuleRegistered(
+            parentTarget,
+            moduleName,
+            {
+                ...parentConfig.rule,
+                visibility
+            },
+            moduleLayout === "modern"
+                ? "Register new modern module pair"
+                : "Register new folder module"
+        );
+
+        if (change) {
+            await applyPlannedBatch({
+                label: "Create module pair",
+                sourcePath: moduleFilePath,
+                changes: [change]
+            });
+        }
+    }
+
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(moduleFilePath));
+}
+
+export async function setModuleVisibility(
+    resource?: vscode.Uri,
+    desiredVisibility?: AutomodVisibility
+): Promise<void> {
+    const target = await resolveModuleSourceUri(resource);
+    if (!target) {
+        vscode.window.showInformationMessage("Select a Rust module file before changing visibility.");
+        return;
+    }
+
+    const visibility = desiredVisibility ?? await pickVisibility();
+    if (!visibility) {
+        return;
+    }
+
+    const descriptor = await resolveDeclarationTargetForModule(target.fsPath);
+    if (!descriptor) {
+        vscode.window.showWarningMessage("Rust AutoMod could not find the declaration target for this module.");
+        return;
+    }
+
+    const beforeContent = await readTextFileIfExists(descriptor.targetFilePath);
+    if (beforeContent === null) {
+        vscode.window.showWarningMessage("Rust AutoMod could not read the file that declares this module.");
+        return;
+    }
+
+    const afterContent = updateModuleVisibility(beforeContent, descriptor.moduleName, visibility);
+    if (afterContent === beforeContent) {
+        vscode.window.showInformationMessage(`The module '${descriptor.moduleName}' is already ${visibility}.`);
+        return;
+    }
+
+    await applyPlannedBatch({
+        label: "Change module visibility",
+        sourcePath: target.fsPath,
+        changes: [{
+            targetFilePath: descriptor.targetFilePath,
+            beforeContent,
+            afterContent: ensureTrailingNewline(afterContent),
+            reason: `Set module visibility to ${visibility}`,
+            formatAfterApply: false
+        }]
+    });
+}
+
+export async function moveModuleToCrateRoot(resource?: vscode.Uri): Promise<void> {
+    const target = await resolveModuleSourceUri(resource);
+    if (!target) {
+        vscode.window.showInformationMessage("Select a leaf Rust module file before moving it to the crate root.");
+        return;
+    }
+
+    const targetBaseName = path.basename(target.fsPath);
+    if (targetBaseName === "mod.rs" || await isModulePairRegistrationFile(target.fsPath)) {
+        vscode.window.showInformationMessage("Move to Crate Root currently supports leaf module files, not folder roots or module pairs.");
+        return;
+    }
+
+    const crateRootRegistration = await resolveRootModuleRegistrationFile(path.dirname(target.fsPath));
+    if (!crateRootRegistration) {
+        vscode.window.showInformationMessage("Rust AutoMod could not find lib.rs or main.rs for this module.");
+        return;
+    }
+
+    const destinationPath = path.join(path.dirname(crateRootRegistration), path.basename(target.fsPath));
+    if (path.normalize(destinationPath) === path.normalize(target.fsPath)) {
+        vscode.window.showInformationMessage("This module is already at the crate root.");
+        return;
+    }
+
+    if (await fileExists(destinationPath)) {
+        vscode.window.showWarningMessage(`A file named ${path.basename(destinationPath)} already exists at the crate root.`);
+        return;
+    }
+
+    await fs.rename(target.fsPath, destinationPath);
+    await regenerateModules(vscode.Uri.file(path.dirname(crateRootRegistration)));
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(destinationPath));
+}
+
 export async function planNewFile(uri: vscode.Uri): Promise<AutomodOperationBatch> {
     const filePath = uri.fsPath;
     if (!validateRustFileOperation(filePath, "creation")) {
@@ -205,23 +360,25 @@ export async function planNewFile(uri: vscode.Uri): Promise<AutomodOperationBatc
     }
 
     const changes: AutomodFileChange[] = [];
-    const targetFilePath = await resolveTargetFilePath(folderPath, resolvedConfig);
-    if (targetFilePath) {
-        const change = await planEnsureModuleRegistered(targetFilePath, fileName, resolvedConfig.rule, "Register module");
+    const targetRegistration = await resolveTargetRegistration(folderPath, resolvedConfig);
+    if (targetRegistration) {
+        const change = await planEnsureModuleRegistered(targetRegistration.filePath, fileName, resolvedConfig.rule, "Register module");
         if (change) {
             changes.push(change);
         }
     }
 
-    if (targetFilePath?.endsWith("mod.rs")) {
+    if (targetRegistration && targetRegistration.kind !== "crate_root") {
         const parentTargetFilePath = await resolveModuleRegistrationFile(path.dirname(folderPath));
         if (parentTargetFilePath) {
-            const parentModuleConfig = await getProjectConfigAsync(path.join(folderPath, "mod.rs"));
+            const parentModuleConfig = await getProjectConfigAsync(targetRegistration.filePath);
             const parentChange = await planEnsureModuleRegistered(
                 parentTargetFilePath,
                 path.basename(folderPath),
                 parentModuleConfig,
-                "Register child module folder"
+                targetRegistration.kind === "modern"
+                    ? "Register modern child module"
+                    : "Register child module folder"
             );
             if (parentChange) {
                 changes.push(parentChange);
@@ -381,9 +538,10 @@ async function planRegenerationForFolder(folderPath: string): Promise<AutomodOpe
             continue;
         }
 
+        const sourceDirectory = await resolveSourceDirectoryForRegistrationFile(registrationFile);
         const desiredModules = new Set([
-            ...await listImmediateRustModules(path.dirname(registrationFile)),
-            ...await listImmediateModuleFolders(path.dirname(registrationFile))
+            ...await listImmediateRustModules(sourceDirectory),
+            ...await listImmediateModuleFolders(sourceDirectory)
         ]);
         let nextContent = beforeContent;
 
@@ -446,17 +604,16 @@ async function applyPlannedBatch(batch: AutomodOperationBatch, forcePreview = fa
     });
 }
 
+async function resolveTargetRegistration(
+    folderPath: string,
+    resolvedConfig: ResolvedAutomodConfig
+) {
+    return resolveModuleRegistrationTarget(folderPath, resolvedConfig.rule.target ?? "auto");
+}
+
 async function resolveTargetFilePath(folderPath: string, resolvedConfig: ResolvedAutomodConfig): Promise<string | null> {
-    const target = await resolveModuleRegistrationFileForTarget(folderPath, resolvedConfig.rule.target ?? "auto");
-    if (target) {
-        return target;
-    }
-
-    if ((resolvedConfig.rule.target ?? "auto") === "auto" || resolvedConfig.rule.target === "mod.rs") {
-        return path.join(folderPath, "mod.rs");
-    }
-
-    return null;
+    const target = await resolveTargetRegistration(folderPath, resolvedConfig);
+    return target?.filePath ?? null;
 }
 
 function shouldSkipByResolvedConfig(resolvedConfig: ResolvedAutomodConfig): boolean {
@@ -538,15 +695,46 @@ async function collectRegistrationFiles(folderPath: string): Promise<string[]> {
     const results: string[] = [];
 
     for (const directory of directories) {
-        for (const candidate of ["mod.rs", "lib.rs", "main.rs"]) {
-            const filePath = path.join(directory, candidate);
-            if (await fileExists(filePath)) {
+        const entries = await fs.readdir(directory, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith(".rs")) {
+                continue;
+            }
+
+            const filePath = path.join(directory, entry.name);
+            if (entry.name === "mod.rs" || entry.name === "lib.rs" || entry.name === "main.rs") {
+                results.push(filePath);
+                continue;
+            }
+
+            if (await isModulePairRegistrationFile(filePath)) {
                 results.push(filePath);
             }
         }
     }
 
-    return results;
+    return Array.from(new Set(results));
+}
+
+async function resolveFolderResourceUri(resource?: vscode.Uri): Promise<vscode.Uri | undefined> {
+    if (resource) {
+        if (await isDirectory(resource.fsPath)) {
+            return resource;
+        }
+
+        return vscode.Uri.file(path.dirname(resource.fsPath));
+    }
+
+    const activeDocument = vscode.window.activeTextEditor?.document;
+    if (activeDocument) {
+        if (await isDirectory(activeDocument.uri.fsPath)) {
+            return activeDocument.uri;
+        }
+
+        return vscode.Uri.file(path.dirname(activeDocument.uri.fsPath));
+    }
+
+    return vscode.workspace.workspaceFolders?.[0]?.uri;
 }
 
 async function resolveResourceUri(resource?: vscode.Uri): Promise<vscode.Uri | undefined> {
@@ -573,6 +761,91 @@ async function showMarkdownDocument(content: string): Promise<void> {
 async function isDirectory(targetPath: string): Promise<boolean> {
     const stats = await fs.stat(targetPath);
     return stats.isDirectory();
+}
+
+async function resolveModuleSourceUri(resource?: vscode.Uri): Promise<vscode.Uri | undefined> {
+    const target = await resolveResourceUri(resource);
+    if (!target) {
+        return undefined;
+    }
+
+    if (!target.fsPath.endsWith(".rs")) {
+        return undefined;
+    }
+
+    const baseName = path.basename(target.fsPath);
+    if (baseName === "lib.rs" || baseName === "main.rs" || baseName === "build.rs") {
+        return undefined;
+    }
+
+    return target;
+}
+
+async function resolveDeclarationTargetForModule(filePath: string): Promise<{ targetFilePath: string, moduleName: string } | null> {
+    const baseName = path.basename(filePath);
+    if (baseName === "mod.rs") {
+        const parentTarget = await resolveModuleRegistrationFile(path.dirname(filePath));
+        return parentTarget
+            ? {
+                targetFilePath: parentTarget,
+                moduleName: path.basename(path.dirname(filePath))
+            }
+            : null;
+    }
+
+    if (await isModulePairRegistrationFile(filePath)) {
+        const parentTarget = await resolveModuleRegistrationFile(path.dirname(filePath));
+        return parentTarget
+            ? {
+                targetFilePath: parentTarget,
+                moduleName: path.basename(filePath, ".rs")
+            }
+            : null;
+    }
+
+    const resolvedConfig = await resolveProjectConfigAsync(filePath);
+    const targetFilePath = await resolveTargetFilePath(path.dirname(filePath), resolvedConfig);
+    if (!targetFilePath) {
+        return null;
+    }
+
+    return {
+        targetFilePath,
+        moduleName: path.basename(filePath, ".rs")
+    };
+}
+
+async function pickVisibility(): Promise<AutomodVisibility | undefined> {
+    const selection = await vscode.window.showQuickPick([
+        {
+            label: "pub",
+            description: "Visible outside the current module tree"
+        },
+        {
+            label: "pub(crate)",
+            description: "Visible across the current crate"
+        },
+        {
+            label: "private",
+            description: "Visible only inside the parent module"
+        }
+    ], {
+        placeHolder: "Choose the module visibility"
+    });
+
+    if (!selection) {
+        return undefined;
+    }
+
+    if (selection.label === "pub(crate)") {
+        return "pub(crate)";
+    }
+
+    if (selection.label === "private") {
+        return "private";
+    }
+
+    return "pub";
 }
 
 function normalizePath(filePath: string): string {

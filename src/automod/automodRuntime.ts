@@ -62,6 +62,7 @@ export class AutomodRuntime implements vscode.Disposable {
             if (change.formatAfterApply) {
                 await runCargoFmt(change.targetFilePath);
             }
+            await this.coordinateWithLanguageServices(change.targetFilePath);
             this.managedSignatures.set(
                 change.targetFilePath,
                 extractManagedDeclarationSignature(change.afterContent)
@@ -180,5 +181,34 @@ export class AutomodRuntime implements vscode.Disposable {
         void vscode.window.showWarningMessage(
             `Rust AutoMod detected manual edits in the managed declaration area of ${path.basename(targetFilePath)}.`
         );
+    }
+
+    private async coordinateWithLanguageServices(targetFilePath: string): Promise<void> {
+        const uri = vscode.Uri.file(targetFilePath);
+
+        try {
+            await vscode.commands.executeCommand("vscode.executeDocumentSymbolProvider", uri);
+        } catch (error) {
+            this.logger.warn("automod.language_services.unavailable", {
+                targetFilePath,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return;
+        }
+
+        const diagnostics = vscode.languages.getDiagnostics(uri)
+            .filter(diagnostic => diagnostic.severity === vscode.DiagnosticSeverity.Error)
+            .slice(0, 5)
+            .map(diagnostic => ({
+                message: diagnostic.message,
+                line: diagnostic.range.start.line + 1
+            }));
+
+        if (diagnostics.length > 0) {
+            this.logger.warn("automod.language_services.diagnostics", {
+                targetFilePath,
+                diagnostics
+            });
+        }
     }
 }

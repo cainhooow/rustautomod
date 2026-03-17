@@ -55,6 +55,26 @@ export function removeModDeclarations(content: string, moduleName: string): stri
     return cleanupEmptyLines(joinPreservingTrailingNewline(content, lines), content.endsWith("\n"));
 }
 
+export function updateModuleVisibility(
+    content: string,
+    moduleName: string,
+    visibility: AutomodRule["visibility"]
+): string {
+    const lines = content.split(/\r?\n/);
+    const declarations = parseManagedDeclarations(lines)
+        .filter(declaration => declaration.kind === "mod" && declaration.moduleName === moduleName);
+
+    if (declarations.length === 0) {
+        return content;
+    }
+
+    for (const declaration of declarations) {
+        lines[declaration.endIndex] = replaceVisibilityInModuleLine(declaration.line, visibility);
+    }
+
+    return joinPreservingTrailingNewline(content, lines);
+}
+
 export function sortModDeclarationsInContent(
     content: string,
     rule?: Partial<AutomodRule>
@@ -354,6 +374,22 @@ function cleanupEmptyLines(content: string, preserveTrailingNewline = false): st
     }
 
     return joined;
+}
+
+function replaceVisibilityInModuleLine(
+    line: string,
+    visibility: AutomodRule["visibility"]
+): string {
+    const moduleName = extractModuleName(line);
+    if (!moduleName) {
+        return line;
+    }
+
+    if (visibility === "private") {
+        return `mod ${moduleName};`;
+    }
+
+    return `${visibility} mod ${moduleName};`;
 }
 
 function joinPreservingTrailingNewline(originalContent: string, lines: string[]): string {

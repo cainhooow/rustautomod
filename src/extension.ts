@@ -5,15 +5,18 @@ import { rautomodCodeActions } from './linting/linting.codeActions';
 import { formattingProvider } from './linting/linting.formatting';
 import {
 	configureAutomodRuntime,
+	createModulePair,
 	explainAutomod,
 	handleFileDelete,
 	handleFileRename,
 	handleNewFile,
 	ignorePathInRautomod,
+	moveModuleToCrateRoot,
 	openAutomodLog,
 	previewAutomod,
 	regenerateModules,
 	scaffoldRautomod,
+	setModuleVisibility,
 	showEffectiveConfig,
 	undoLastAutomodAction
 } from './automod/automodModFile';
@@ -80,6 +83,18 @@ export function activate(context: vscode.ExtensionContext) {
 	const scaffoldCommand = vscode.commands.registerCommand(
 		"rustautomod.scaffoldRautomod",
 		(resource?: vscode.Uri) => scaffoldRautomod(resource)
+	);
+	const createModulePairCommand = vscode.commands.registerCommand(
+		"rustautomod.createModulePair",
+		(resource?: vscode.Uri) => createModulePair(resource)
+	);
+	const setModuleVisibilityCommand = vscode.commands.registerCommand(
+		"rustautomod.setModuleVisibility",
+		(resource?: vscode.Uri, visibility?: "pub" | "pub(crate)" | "private") => setModuleVisibility(resource, visibility)
+	);
+	const moveModuleToCrateRootCommand = vscode.commands.registerCommand(
+		"rustautomod.moveModuleToCrateRoot",
+		(resource?: vscode.Uri) => moveModuleToCrateRoot(resource)
 	);
 	const openLogCommand = vscode.commands.registerCommand(
 		"rustautomod.openLog",
@@ -322,6 +337,9 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(effectiveConfigCommand);
 	context.subscriptions.push(ignoreCommand);
 	context.subscriptions.push(scaffoldCommand);
+	context.subscriptions.push(createModulePairCommand);
+	context.subscriptions.push(setModuleVisibilityCommand);
+	context.subscriptions.push(moveModuleToCrateRootCommand);
 	context.subscriptions.push(openLogCommand);
 	context.subscriptions.push(openVisualRautomodCommand);
 	context.subscriptions.push(openRawRautomodCommand);

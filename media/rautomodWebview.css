@@ -154,7 +154,7 @@ body::before {
 .editor-shell,
 .manager {
     display: grid;
-    gap: 20px;
+    gap: 24px;
     padding: 24px;
 }
 
@@ -284,7 +284,7 @@ body::before {
 .field-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 14px;
+    gap: 16px;
 }
 
 .field-grid.compact {
@@ -355,7 +355,7 @@ body::before {
         rgba(12, 18, 28, 0.58);
     padding: 18px;
     display: grid;
-    gap: 16px;
+    gap: 18px;
 }
 
 .rule-card h3,
@@ -426,6 +426,85 @@ body::before {
 .search {
     flex: 1 1 180px;
     min-width: 0;
+}
+
+.manager-toolbar {
+    display: grid;
+    grid-template-columns: minmax(240px, 1.2fr) repeat(4, minmax(120px, auto));
+    gap: 14px;
+    align-items: center;
+}
+
+.manager .section-title,
+.manager .panel-header {
+    margin-bottom: 4px;
+}
+
+.manager .panel,
+.manager .config-card {
+    gap: 18px;
+}
+
+.manager .card-actions {
+    margin-top: 6px;
+    row-gap: 14px;
+}
+
+.config-card .field-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: start;
+}
+
+.impact-item,
+.diagnostic-item,
+.history-item,
+.playground-rule {
+    display: grid;
+    gap: 12px;
+}
+
+.impact-item .hero-actions,
+.diagnostic-item .hero-actions,
+.module-tree-node .card-actions {
+    row-gap: 10px;
+}
+
+.playground-bar {
+    align-items: flex-end;
+    margin-top: 4px;
+}
+
+.playground-result,
+.module-tree-root {
+    margin-top: 4px;
+}
+
+.module-tree-node {
+    display: grid;
+    gap: 12px;
+    margin-left: var(--tree-depth, 0px);
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.module-tree-node + .module-tree-node {
+    margin-top: 12px;
+}
+
+.module-tree-node-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.module-tree-children {
+    display: grid;
+    gap: 12px;
+    margin-top: 4px;
 }
 
 .manager-toolbar select,
@@ -738,6 +817,10 @@ body::before {
     }
 
     .manager-toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    .config-card .field-grid {
         grid-template-columns: 1fr;
     }
 }

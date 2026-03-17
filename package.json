@@ -34,6 +34,9 @@
     "onCommand:rustautomod.showEffectiveConfig",
     "onCommand:rustautomod.ignorePathInRautomod",
     "onCommand:rustautomod.scaffoldRautomod",
+    "onCommand:rustautomod.createModulePair",
+    "onCommand:rustautomod.setModuleVisibility",
+    "onCommand:rustautomod.moveModuleToCrateRoot",
     "onCommand:rustautomod.openLog",
     "onCommand:rustautomod.openRautomodVisual",
     "onCommand:rustautomod.openRautomodRaw",
@@ -122,6 +125,15 @@
           "command": "rustautomod.scaffoldRautomod"
         },
         {
+          "command": "rustautomod.createModulePair"
+        },
+        {
+          "command": "rustautomod.setModuleVisibility"
+        },
+        {
+          "command": "rustautomod.moveModuleToCrateRoot"
+        },
+        {
           "command": "rustautomod.openLog"
         },
         {
@@ -176,14 +188,29 @@
           "group": "navigation@97"
         },
         {
+          "command": "rustautomod.createModulePair",
+          "when": "explorerResourceIsFolder || resourceExtname == .rs",
+          "group": "navigation@98"
+        },
+        {
+          "command": "rustautomod.setModuleVisibility",
+          "when": "resourceExtname == .rs",
+          "group": "navigation@99"
+        },
+        {
+          "command": "rustautomod.moveModuleToCrateRoot",
+          "when": "resourceExtname == .rs",
+          "group": "navigation@100"
+        },
+        {
           "command": "rustautomod.openRautomodVisual",
           "when": "resourceFilename == .rautomod",
-          "group": "navigation@98"
+          "group": "navigation@101"
         },
         {
           "command": "rustautomod.openRautomodRaw",
           "when": "resourceFilename == .rautomod",
-          "group": "navigation@99"
+          "group": "navigation@102"
         }
       ],
       "view/title": [
@@ -235,6 +262,18 @@
       {
         "title": "Scaffold .rautomod",
         "command": "rustautomod.scaffoldRautomod"
+      },
+      {
+        "title": "Create Rust Module Pair",
+        "command": "rustautomod.createModulePair"
+      },
+      {
+        "title": "Set Module Visibility",
+        "command": "rustautomod.setModuleVisibility"
+      },
+      {
+        "title": "Move Module to Crate Root",
+        "command": "rustautomod.moveModuleToCrateRoot"
       },
       {
         "title": "Open Rust AutoMod Log",
@@ -292,6 +331,16 @@
           "type": "boolean",
           "default": false,
           "description": "Show a diff preview and ask for confirmation before Rust AutoMod writes changes."
+        },
+        "rustautomod.moduleLayout": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "classic",
+            "modern"
+          ],
+          "default": "auto",
+          "description": "Choose how Rust AutoMod resolves folder modules: classic folder/mod.rs, modern folder.rs + folder/, or automatic detection."
         }
       }
     }
