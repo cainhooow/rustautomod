@@ -12,6 +12,7 @@ import {
     collectManagerPlaygroundResult,
     collectRautomodManagerState
 } from "./rautomodStudioService";
+import { invalidateRautomodStudioCaches } from "./studio/rautomodStudioCacheService";
 import { openRautomodRaw, openRautomodVisual } from "./rautomodCustomEditor";
 import { getRautomodManagerHtml } from "./rautomodWebviewTemplates";
 
@@ -22,16 +23,17 @@ export class RautomodManagerViewProvider implements vscode.WebviewViewProvider, 
     private readonly watcher = vscode.workspace.createFileSystemWatcher("**/.rautomod");
     private isViewReady = false;
     private isDisposed = false;
+    private refreshTimer: NodeJS.Timeout | undefined;
 
     constructor(private readonly context: vscode.ExtensionContext) {
         this.watcher.onDidCreate(() => {
-            void this.refresh();
+            this.handleStudioStateChange();
         });
         this.watcher.onDidChange(() => {
-            void this.refresh();
+            this.handleStudioStateChange();
         });
         this.watcher.onDidDelete(() => {
-            void this.refresh();
+            this.handleStudioStateChange();
         });
     }
 
@@ -61,6 +63,22 @@ export class RautomodManagerViewProvider implements vscode.WebviewViewProvider, 
         await this.refresh();
     }
 
+    private handleStudioStateChange(): void {
+        invalidateRautomodStudioCaches();
+        this.scheduleRefresh();
+    }
+
+    private scheduleRefresh(delay = 140): void {
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+        }
+
+        this.refreshTimer = setTimeout(() => {
+            this.refreshTimer = undefined;
+            void this.refresh();
+        }, delay);
+    }
+
     async refresh(): Promise<void> {
         if (!this.webviewView || !this.isViewReady || this.isDisposed) {
             return;
@@ -77,6 +95,10 @@ export class RautomodManagerViewProvider implements vscode.WebviewViewProvider, 
 
     dispose(): void {
         this.isDisposed = true;
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = undefined;
+        }
         this.watcher.dispose();
     }
 }
@@ -96,6 +118,7 @@ export function registerRautomodManagerView(
     );
 
     const workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        invalidateRautomodStudioCaches();
         void provider.refresh();
     });
 
@@ -109,10 +132,12 @@ export class RautomodManagerPanel implements vscode.Disposable {
 
     private readonly watcher = vscode.workspace.createFileSystemWatcher("**/.rautomod");
     private readonly workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        invalidateRautomodStudioCaches();
         void this.refresh();
     });
     private isPanelReady = false;
     private isDisposed = false;
+    private refreshTimer: NodeJS.Timeout | undefined;
 
     private constructor(
         private readonly panel: vscode.WebviewPanel,
@@ -142,17 +167,33 @@ export class RautomodManagerPanel implements vscode.Disposable {
         });
 
         this.watcher.onDidCreate(() => {
-            void this.refresh();
+            this.handleStudioStateChange();
         });
         this.watcher.onDidChange(() => {
-            void this.refresh();
+            this.handleStudioStateChange();
         });
         this.watcher.onDidDelete(() => {
-            void this.refresh();
+            this.handleStudioStateChange();
         });
 
         this.panel.webview.html = getRautomodManagerHtml(this.panel.webview, this.context.extensionUri, "panel");
         void this.refresh();
+    }
+
+    private handleStudioStateChange(): void {
+        invalidateRautomodStudioCaches();
+        this.scheduleRefresh();
+    }
+
+    private scheduleRefresh(delay = 140): void {
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+        }
+
+        this.refreshTimer = setTimeout(() => {
+            this.refreshTimer = undefined;
+            void this.refresh();
+        }, delay);
     }
 
     static createOrShow(context: vscode.ExtensionContext): void {
@@ -196,6 +237,10 @@ export class RautomodManagerPanel implements vscode.Disposable {
         }
 
         this.isDisposed = true;
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = undefined;
+        }
         this.watcher.dispose();
         this.workspaceListener.dispose();
     }
@@ -265,6 +310,7 @@ async function handleManagerMessage(
             return;
         case "scaffold":
             await scaffoldRautomod(vscode.Uri.parse(String(payload.uri)));
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "createModulePair":
@@ -272,6 +318,7 @@ async function handleManagerMessage(
                 return;
             }
             await createModulePair(vscode.Uri.parse(payload.uri));
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "setModuleVisibility":
@@ -279,6 +326,7 @@ async function handleManagerMessage(
                 return;
             }
             await setModuleVisibility(vscode.Uri.parse(payload.uri), payload.visibility);
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "moveModuleToCrateRoot":
@@ -286,18 +334,22 @@ async function handleManagerMessage(
                 return;
             }
             await moveModuleToCrateRoot(vscode.Uri.parse(payload.uri));
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "scaffoldAll":
             await scaffoldAllWorkspaceRoots();
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "formatAll":
             await formatAllRautomodFiles();
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "regenerateWorkspace":
             await regenerateModules(payload.workspaceUri ? vscode.Uri.parse(payload.workspaceUri) : undefined);
+            invalidateRautomodStudioCaches();
             await refresh();
             return;
         case "openDiagnosticConfigs":

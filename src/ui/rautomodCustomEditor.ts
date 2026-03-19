@@ -6,6 +6,7 @@ import {
     RautomodDocumentViewModel
 } from "./rautomodState";
 import { collectRautomodEditorInsights } from "./rautomodStudioService";
+import { invalidateRautomodStudioCaches } from "./studio/rautomodStudioCacheService";
 import { getRautomodEditorHtml } from "./rautomodWebviewTemplates";
 
 export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProvider {
@@ -19,27 +20,66 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
     ): Promise<void> {
         let isWebviewReady = false;
         let isDisposed = false;
+        let lastPostedVersion = -1;
+        let insightsTimer: NodeJS.Timeout | undefined;
+        let insightsRequestId = 0;
 
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [this.context.extensionUri]
         };
 
-        const updateWebview = async (): Promise<void> => {
+        const scheduleInsightsSync = (
+            rawText: string,
+            matchPath?: string,
+            delay = 120
+        ): void => {
+            if (!isWebviewReady || isDisposed) {
+                return;
+            }
+
+            if (insightsTimer) {
+                clearTimeout(insightsTimer);
+            }
+
+            const requestId = ++insightsRequestId;
+            insightsTimer = setTimeout(() => {
+                insightsTimer = undefined;
+                void (async () => {
+                    try {
+                        const value = await collectRautomodEditorInsights(document.uri, rawText, matchPath);
+                        if (isDisposed || !isWebviewReady || requestId !== insightsRequestId) {
+                            return;
+                        }
+
+                        await webviewPanel.webview.postMessage({
+                            type: "setInsights",
+                            value
+                        });
+                    } catch (error) {
+                        if (!isDisposed) {
+                            console.warn("RUST AUTOMOD STUDIO: Failed to update editor insights.", error);
+                        }
+                    }
+                })();
+            }, delay);
+        };
+
+        const updateWebview = async (force = false): Promise<void> => {
             if (!isWebviewReady || isDisposed) {
                 return;
             }
 
             try {
-                await webviewPanel.webview.postMessage({
-                    type: "setState",
-                    value: createRautomodDocumentViewModel(document)
-                });
+                if (force || lastPostedVersion !== document.version) {
+                    lastPostedVersion = document.version;
+                    await webviewPanel.webview.postMessage({
+                        type: "setState",
+                        value: createRautomodDocumentViewModel(document)
+                    });
+                }
 
-                await webviewPanel.webview.postMessage({
-                    type: "setInsights",
-                    value: await collectRautomodEditorInsights(document.uri, document.getText())
-                });
+                scheduleInsightsSync(document.getText(), undefined, force ? 0 : 120);
             } catch (error) {
                 if (!isDisposed) {
                     console.warn("RUST AUTOMOD STUDIO: Failed to update editor webview.", error);
@@ -55,6 +95,10 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
 
         webviewPanel.onDidDispose(() => {
             isDisposed = true;
+            if (insightsTimer) {
+                clearTimeout(insightsTimer);
+                insightsTimer = undefined;
+            }
             changeDocumentSubscription.dispose();
         });
 
@@ -62,7 +106,7 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
             switch (message.type) {
                 case "ready":
                     isWebviewReady = true;
-                    await updateWebview();
+                    await updateWebview(true);
                     return;
                 case "applyVisual":
                     await this.applyVisualChanges(document, message.value as RautomodDocumentViewModel);
@@ -77,14 +121,11 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
                     });
                     return;
                 case "refreshInsights":
-                    await webviewPanel.webview.postMessage({
-                        type: "setInsights",
-                        value: await collectRautomodEditorInsights(
-                            document.uri,
-                            String(message.rawText ?? document.getText()),
-                            typeof message.matchPath === "string" ? message.matchPath : undefined
-                        )
-                    });
+                    scheduleInsightsSync(
+                        String(message.rawText ?? document.getText()),
+                        typeof message.matchPath === "string" ? message.matchPath : undefined,
+                        0
+                    );
                     return;
                 case "openRaw":
                     await openRautomodRaw(document.uri);
@@ -106,7 +147,7 @@ export class RautomodCustomEditorProvider implements vscode.CustomTextEditorProv
         });
 
         webviewPanel.webview.html = getRautomodEditorHtml(webviewPanel.webview, this.context.extensionUri);
-        await updateWebview();
+        await updateWebview(true);
     }
 
     private async applyVisualChanges(
@@ -175,4 +216,5 @@ async function replaceDocumentContent(
     edit.replace(document.uri, fullRange, nextText);
     await vscode.workspace.applyEdit(edit);
     await document.save();
+    invalidateRautomodStudioCaches();
 }

@@ -39,23 +39,38 @@ edition = "2021"
 }
 
 export async function addWorkspaceFolder(folderPath: string): Promise<vscode.WorkspaceFolder> {
+    const targetUri = vscode.Uri.file(folderPath);
+    const existingWorkspaceFolder = vscode.workspace.getWorkspaceFolder(targetUri);
+    if (existingWorkspaceFolder) {
+        return existingWorkspaceFolder;
+    }
+
+    const workspaceChange = waitForWorkspaceFolder(folderPath);
     const updated = vscode.workspace.updateWorkspaceFolders(
         vscode.workspace.workspaceFolders?.length ?? 0,
         null,
-        { uri: vscode.Uri.file(folderPath), name: path.basename(folderPath) }
+        { uri: targetUri, name: path.basename(folderPath) }
     );
 
     if (!updated) {
+        workspaceChange.dispose();
         throw new Error(`Failed to add workspace folder: ${folderPath}`);
     }
 
-    await waitForCondition(
-        () => Boolean(vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folderPath))),
-        3000,
-        50
-    );
+    try {
+        await Promise.race([
+            workspaceChange.promise,
+            waitForCondition(
+                () => Boolean(vscode.workspace.getWorkspaceFolder(targetUri)),
+                12000,
+                100
+            )
+        ]);
+    } finally {
+        workspaceChange.dispose();
+    }
 
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folderPath));
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(targetUri);
     if (!workspaceFolder) {
         throw new Error(`Workspace folder was not available after add: ${folderPath}`);
     }
@@ -98,16 +113,25 @@ export async function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFol
         return;
     }
 
+    const workspaceChange = waitForWorkspaceFolderRemoval(workspaceFolder.uri.toString());
     const updated = vscode.workspace.updateWorkspaceFolders(index, 1);
     if (!updated) {
+        workspaceChange.dispose();
         throw new Error(`Failed to remove workspace folder: ${workspaceFolder.uri.fsPath}`);
     }
 
-    await waitForCondition(
-        () => !vscode.workspace.workspaceFolders?.some(folder => folder.uri.toString() === workspaceFolder.uri.toString()),
-        3000,
-        50
-    );
+    try {
+        await Promise.race([
+            workspaceChange.promise,
+            waitForCondition(
+                () => !vscode.workspace.workspaceFolders?.some(folder => folder.uri.toString() === workspaceFolder.uri.toString()),
+                12000,
+                100
+            )
+        ]);
+    } finally {
+        workspaceChange.dispose();
+    }
 }
 
 export async function deleteDirectory(directoryPath: string): Promise<void> {
@@ -147,6 +171,68 @@ export async function waitForCondition(
 
 export async function delay(milliseconds: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function waitForWorkspaceFolder(folderPath: string): { promise: Promise<void>; dispose: () => void } {
+    const target = vscode.Uri.file(folderPath).toString();
+
+    let resolved = false;
+    let disposeListener = () => undefined;
+    const promise = new Promise<void>(resolve => {
+        const listener = vscode.workspace.onDidChangeWorkspaceFolders(event => {
+            if (resolved) {
+                return;
+            }
+
+            if (event.added.some(folder => folder.uri.toString() === target)
+                || vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folderPath))) {
+                resolved = true;
+                listener.dispose();
+                resolve();
+            }
+        });
+
+        disposeListener = () => {
+            if (!resolved) {
+                listener.dispose();
+            }
+        };
+    });
+
+    return {
+        promise,
+        dispose: disposeListener
+    };
+}
+
+function waitForWorkspaceFolderRemoval(folderUri: string): { promise: Promise<void>; dispose: () => void } {
+    let resolved = false;
+    let disposeListener = () => undefined;
+    const promise = new Promise<void>(resolve => {
+        const listener = vscode.workspace.onDidChangeWorkspaceFolders(event => {
+            if (resolved) {
+                return;
+            }
+
+            if (event.removed.some(folder => folder.uri.toString() === folderUri)
+                || !vscode.workspace.workspaceFolders?.some(folder => folder.uri.toString() === folderUri)) {
+                resolved = true;
+                listener.dispose();
+                resolve();
+            }
+        });
+
+        disposeListener = () => {
+            if (!resolved) {
+                listener.dispose();
+            }
+        };
+    });
+
+    return {
+        promise,
+        dispose: disposeListener
+    };
 }
 
 function isRetryableDeleteError(error: unknown): boolean {

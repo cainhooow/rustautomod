@@ -2,6 +2,47 @@
 
 ## [Released]
 
+### 1.7.4
+
+This release makes the Studio manager tree update in place instead of re-rendering the full manager surface.
+
+#### Fixed
+
+- Opening or collapsing items in the module tree no longer shifts the page upward because the clicked branch is patched locally.
+- Module-tree interactions now avoid full manager re-renders for expand/collapse, which keeps navigation steadier in deep trees.
+
+### 1.7.3
+
+This release smooths the Studio manager tree interaction so expanding and collapsing branches feels anchored instead of jumpy.
+
+#### Fixed
+
+- Expanding or collapsing a tree or sub-tree now preserves the clicked branch position instead of jumping the page upward.
+- Tree summary clicks are now handled explicitly so the lazy-render path does not fight the browser's default `details/summary` scroll behavior.
+
+### 1.7.2
+
+This release fixes a Studio manager regression where the tree hydration path could keep toggling itself after render.
+
+#### Fixed
+
+- The manager module tree no longer enters a re-render loop after opening, which also restores normal page scrolling.
+- Config cards and tree branches now ignore hydration toggles that do not represent a real user state change.
+
+### 1.7.1
+
+This release smooths out the Studio manager with a cleaner disclosure header and a lighter module-tree rendering path for large workspaces.
+
+#### Changed
+
+- The manager disclosure header now keeps its indicator inside the card frame even when the badge row gets crowded.
+- The Studio module tree now lazily renders expanded branches so large nested hierarchies stay more responsive.
+
+#### Fixed
+
+- Tree open-state persistence now distinguishes between the default initial expansion and the user's explicit expand/collapse choices.
+- The manager no longer keeps full hidden subtrees mounted in the DOM after branches are collapsed.
+
 ### 1.7.0
 
 This release expands Rust AutoMod beyond `mod.rs`-only workflows, adding support for the modern Rust module layout, module-tree actions in Studio, smarter visibility tooling, and more robust manager behavior.

@@ -141,6 +141,8 @@ The manager UI gives you:
 - a manager-side why/why-not playground for testing individual paths
 - a visual module tree built from crate roots and actual `mod` declarations
 - quick actions on module-tree nodes to create child modules, switch visibility, open files, or move a leaf module to the crate root
+- lazy-rendered tree expansion so large module hierarchies stay more responsive as you open and close branches
+- stable manager expansion state with in-place tree updates, so opening and collapsing branches keeps the viewport anchored instead of jumping
 - quick access to the Rust AutoMod log
 
 This manager is meant to feel closer to a product control surface, similar in spirit to a settings UI, while still keeping the actual `.rautomod` file as the source of truth.

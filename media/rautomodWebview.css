@@ -3,16 +3,24 @@
     --accent: #ff7a18;
     --accent-strong: #ff9a4d;
     --accent-soft: #ffbe85;
+    --accent-deep: #ff5f1f;
+    --accent-fog: rgba(255, 122, 24, 0.18);
     --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.25 4.5L6 8.25L9.75 4.5' stroke='%23ffbe85' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --font-ui: "Varela Round", "Segoe UI Variable", "Trebuchet MS", sans-serif;
     --font-display: "Varela Round", "Segoe UI Variable", "Trebuchet MS", sans-serif;
     --headline: var(--vscode-editor-foreground);
     --text: color-mix(in srgb, var(--vscode-editor-foreground) 88%, white 12%);
     --text-muted: color-mix(in srgb, var(--vscode-editor-foreground) 62%, transparent 38%);
-    --panel: color-mix(in srgb, var(--vscode-editor-background) 88%, #101826 12%);
-    --panel-strong: color-mix(in srgb, var(--vscode-editor-background) 78%, #0d1622 22%);
-    --border: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 122, 24, 0.24);
+    --panel: color-mix(in srgb, var(--vscode-editor-background) 86%, #121c2b 14%);
+    --panel-strong: color-mix(in srgb, var(--vscode-editor-background) 72%, #0e1723 28%);
+    --surface: rgba(255, 255, 255, 0.035);
+    --surface-strong: rgba(255, 255, 255, 0.055);
+    --surface-soft: rgba(255, 255, 255, 0.022);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 122, 24, 0.28);
+    --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.18);
+    --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.16);
+    --shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 0 34px rgba(255, 122, 24, 0.08);
 }
 
 * {
@@ -23,8 +31,10 @@ body {
     margin: 0;
     min-height: 100vh;
     background:
-        radial-gradient(circle at top left, rgba(255, 122, 24, 0.07), transparent 34%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 28%),
+        radial-gradient(circle at 12% 0%, rgba(255, 122, 24, 0.12), transparent 26%),
+        radial-gradient(circle at 100% 22%, rgba(255, 190, 133, 0.07), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(71, 117, 255, 0.08), transparent 30%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 28%),
         var(--vscode-editor-background);
     color: var(--text);
     font: 400 13px/1.6 var(--font-ui);
@@ -46,30 +56,65 @@ body::before {
     pointer-events: none;
 }
 
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent 24%),
+        radial-gradient(circle at 20% 20%, rgba(255, 122, 24, 0.05), transparent 20%);
+    mix-blend-mode: screen;
+    opacity: 0.35;
+    pointer-events: none;
+}
+
 #root {
     position: relative;
     z-index: 1;
 }
 
 .panel {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
     border-radius: 24px;
     border: 1px solid var(--border);
     background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.06), transparent 38%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 28%),
         var(--panel);
     padding: 18px;
-    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(14px);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.panel:hover {
+    border-color: rgba(255, 255, 255, 0.11);
+    box-shadow: var(--shadow-soft), var(--shadow-glow);
 }
 
 .button {
     appearance: none;
     border: 0;
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
     border-radius: 999px;
     padding: 11px 16px;
     font: 400 12px/1.1 var(--font-ui);
     letter-spacing: 0.01em;
-    transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+    transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease, background 150ms ease;
 }
 
 .button:hover {
@@ -77,45 +122,60 @@ body::before {
 }
 
 .button.primary {
-    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong) 58%, #ffb066);
     color: #120d09;
-    box-shadow: 0 10px 28px rgba(255, 122, 24, 0.22);
+    box-shadow: 0 12px 32px rgba(255, 122, 24, 0.26);
 }
 
 .button.secondary {
-    background: rgba(255, 122, 24, 0.16);
+    background: linear-gradient(135deg, rgba(255, 122, 24, 0.2), rgba(255, 122, 24, 0.12));
     color: var(--headline);
-    box-shadow: inset 0 0 0 1px rgba(255, 122, 24, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(255, 122, 24, 0.24);
 }
 
 .button.ghost {
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
     color: var(--text);
     box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.button::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 20%, rgba(255, 255, 255, 0.16) 50%, transparent 80%);
+    transform: translateX(-130%);
+    transition: transform 280ms ease;
+    pointer-events: none;
+}
+
+.button:hover::after {
+    transform: translateX(130%);
 }
 
 .badge {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     border-radius: 999px;
-    padding: 8px 13px;
-    background: rgba(255, 255, 255, 0.04);
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
     border: 1px solid var(--border);
     color: var(--text);
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     font-weight: 400;
     line-height: 1;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .eyebrow {
     margin: 0 0 10px;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--accent-soft);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 400;
 }
 
@@ -165,8 +225,14 @@ body::before {
 .editor-shell,
 .manager {
     display: grid;
-    gap: 24px;
+    gap: 28px;
     padding: 26px 24px 32px;
+}
+
+.manager > section,
+.editor-shell > section {
+    display: grid;
+    gap: 14px;
 }
 
 body[data-manager-surface="sidebar"] .manager.compact {
@@ -179,13 +245,14 @@ body[data-manager-surface="sidebar"] .manager.compact {
     position: relative;
     overflow: hidden;
     border-radius: 26px;
-    padding: 24px;
+    padding: 28px;
     background:
-        radial-gradient(circle at top left, rgba(255, 122, 24, 0.28), transparent 42%),
-        linear-gradient(145deg, rgba(255, 247, 237, 0.12), rgba(255, 122, 24, 0.05)),
+        radial-gradient(circle at top left, rgba(255, 122, 24, 0.3), transparent 42%),
+        radial-gradient(circle at 85% 15%, rgba(255, 190, 133, 0.14), transparent 24%),
+        linear-gradient(145deg, rgba(255, 247, 237, 0.13), rgba(255, 122, 24, 0.06)),
         var(--panel-strong);
     border: 1px solid var(--border-strong);
-    box-shadow: 0 20px 80px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 26px 90px rgba(0, 0, 0, 0.22);
 }
 
 .hero::before,
@@ -217,8 +284,8 @@ body[data-manager-surface="sidebar"] .manager.compact {
 .hero h1,
 .masthead h1 {
     margin: 0 0 8px;
-    font: 400 33px/1.08 var(--font-display);
-    letter-spacing: -0.02em;
+    font: 400 37px/1.04 var(--font-display);
+    letter-spacing: -0.03em;
     color: var(--headline);
 }
 
@@ -243,13 +310,18 @@ body[data-manager-surface="sidebar"] .manager.compact {
     flex-wrap: wrap;
 }
 
+.section-title {
+    margin-bottom: 8px;
+}
+
 .tabs {
     display: inline-flex;
     gap: 8px;
-    padding: 6px;
+    padding: 7px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.04);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
     border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .tab {
@@ -260,12 +332,13 @@ body[data-manager-surface="sidebar"] .manager.compact {
     padding: 10px 16px;
     cursor: pointer;
     font-weight: 400;
+    transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .tab.active {
-    background: linear-gradient(135deg, rgba(255, 122, 24, 0.24), rgba(255, 190, 133, 0.18));
+    background: linear-gradient(135deg, rgba(255, 122, 24, 0.24), rgba(255, 190, 133, 0.18), rgba(255, 122, 24, 0.12));
     color: var(--headline);
-    box-shadow: inset 0 0 0 1px rgba(255, 122, 24, 0.28);
+    box-shadow: inset 0 0 0 1px rgba(255, 122, 24, 0.28), 0 8px 18px rgba(255, 122, 24, 0.12);
 }
 
 .content-grid {
@@ -324,11 +397,13 @@ body[data-manager-surface="sidebar"] .manager.compact {
     min-width: 0;
     border-radius: 14px;
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.025));
     color: var(--text);
     padding: 12px 14px;
     outline: none;
     font: 400 13px/1.5 var(--font-ui);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
 .field select,
@@ -370,11 +445,11 @@ body[data-manager-surface="sidebar"] .manager.compact {
     min-height: 520px;
     border-radius: 22px;
     border: 1px solid var(--border-strong);
-    background: rgba(8, 12, 19, 0.82);
+    background: linear-gradient(180deg, rgba(11, 16, 26, 0.98), rgba(8, 12, 19, 0.92));
     color: #f9fafb;
     padding: 20px;
     line-height: 1.6;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 48px rgba(0, 0, 0, 0.18);
 }
 
 .field input:focus,
@@ -389,14 +464,30 @@ body[data-manager-surface="sidebar"] .manager.compact {
 .rule-card,
 .config-card,
 .summary-card {
+    position: relative;
     border-radius: 22px;
     border: 1px solid var(--border);
     background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent),
-        rgba(12, 18, 28, 0.58);
+        radial-gradient(circle at top right, rgba(255, 122, 24, 0.08), transparent 28%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.05), transparent 40%),
+        rgba(12, 18, 28, 0.62);
     padding: 18px;
     display: grid;
     gap: 18px;
+    box-shadow: var(--shadow-card);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.rule-card:hover,
+.config-card:hover,
+.summary-card:hover,
+.impact-item:hover,
+.playground-result:hover,
+.module-tree-node:hover,
+.compact-config-item:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.13);
+    box-shadow: var(--shadow-card), var(--shadow-glow);
 }
 
 .rule-card h3,
@@ -440,15 +531,16 @@ body[data-manager-surface="sidebar"] .manager.compact {
 }
 
 .summary-card strong {
-    font-size: 22px;
+    font-size: 24px;
     color: var(--headline);
 }
 
 .diagnostic-item {
     border-radius: 18px;
-    padding: 14px;
+    padding: 15px;
     border: 1px solid rgba(255, 122, 24, 0.22);
     background: rgba(255, 122, 24, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .diagnostic-item.error {
@@ -464,7 +556,7 @@ body[data-manager-surface="sidebar"] .manager.compact {
     border-radius: 18px;
     padding: 14px 16px;
     border: 1px solid rgba(255, 190, 133, 0.26);
-    background: rgba(255, 190, 133, 0.08);
+    background: linear-gradient(135deg, rgba(255, 190, 133, 0.12), rgba(255, 190, 133, 0.06));
     color: var(--text);
 }
 
@@ -497,16 +589,16 @@ body[data-manager-surface="sidebar"] .manager.compact {
 
 .compact-config-list {
     display: grid;
-    gap: 12px;
+    gap: 14px;
 }
 
 .compact-config-item {
     display: grid;
     gap: 12px;
-    padding: 14px;
+    padding: 15px;
     border-radius: 18px;
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
 }
 
 .compact-config-item strong {
@@ -528,12 +620,12 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 
 .manager .section-title,
 .manager .panel-header {
-    margin-bottom: 4px;
+    margin-bottom: 8px;
 }
 
 .manager .panel,
 .manager .config-card {
-    gap: 18px;
+    gap: 20px;
 }
 
 .manager .card-actions {
@@ -559,7 +651,7 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 .workspace-list,
 .config-list,
 .stack {
-    gap: 16px;
+    gap: 18px;
 }
 
 .impact-item .hero-actions,
@@ -580,16 +672,52 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 
 .module-tree-node {
     display: grid;
-    gap: 12px;
+    gap: 14px;
     margin-left: var(--tree-depth, 0px);
-    padding: 14px 16px;
+    padding: 16px 18px;
     border-radius: 18px;
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
+    box-shadow: var(--shadow-card);
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: 128px;
 }
 
 .module-tree-node + .module-tree-node {
     margin-top: 12px;
+}
+
+.module-tree-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    list-style: none;
+    cursor: pointer;
+    position: relative;
+}
+
+.module-tree-summary::-webkit-details-marker {
+    display: none;
+}
+
+.module-tree-summary::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 11px;
+    height: 11px;
+    margin-top: 6px;
+    border-right: 1.5px solid var(--accent-soft);
+    border-bottom: 1.5px solid var(--accent-soft);
+    transform: rotate(-45deg);
+    transition: transform 180ms ease;
+    opacity: 0.85;
+}
+
+.module-tree-branch[open] > .module-tree-summary::before,
+.module-tree-workspace[open] > .module-tree-summary::before {
+    transform: rotate(45deg);
 }
 
 .module-tree-node-main {
@@ -602,8 +730,48 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 
 .module-tree-children {
     display: grid;
-    gap: 12px;
-    margin-top: 4px;
+    gap: 14px;
+    margin-top: 8px;
+    contain: layout paint;
+}
+
+.module-tree-body {
+    display: grid;
+    gap: 14px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    contain: layout paint;
+}
+
+.module-tree-root {
+    display: grid;
+    gap: 16px;
+    contain: layout paint;
+}
+
+.module-tree-workspace {
+    gap: 0;
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: 280px;
+}
+
+.workspace-tree-summary {
+    align-items: center;
+}
+
+.tree-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255, 122, 24, 0.12);
+    color: var(--accent-soft);
+    font-size: 11px;
+    border: 1px solid rgba(255, 122, 24, 0.18);
 }
 
 .manager-toolbar select,
@@ -613,11 +781,12 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
     min-width: 0;
     border-radius: 14px;
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.025));
     color: var(--text);
     padding: 12px 14px;
     outline: none;
     font: 400 13px/1.5 var(--font-ui);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .manager-toolbar select:focus,
@@ -662,22 +831,61 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
     gap: 16px;
     cursor: pointer;
     list-style: none;
+    position: relative;
+    min-width: 0;
+    padding-right: 46px;
 }
 
 .panel-summary::-webkit-details-marker {
     display: none;
 }
 
+.panel-summary > :first-child {
+    flex: 1 1 260px;
+    min-width: 0;
+}
+
+.panel-summary .tag-row {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+    min-width: 0;
+    padding-right: 4px;
+}
+
+.panel-summary::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    width: 11px;
+    height: 11px;
+    border-right: 1.5px solid var(--accent-soft);
+    border-bottom: 1.5px solid var(--accent-soft);
+    transform: translateY(-58%) rotate(45deg);
+    transition: transform 180ms ease;
+    opacity: 0.8;
+}
+
+.config-card[open] > .panel-summary::after {
+    transform: translateY(-35%) rotate(-135deg);
+}
+
+.module-tree-node:hover,
+.module-tree-workspace:hover {
+    transform: none;
+    box-shadow: var(--shadow-card), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
 .disclosure-body {
     display: grid;
-    gap: 16px;
-    margin-top: 16px;
+    gap: 20px;
+    margin-top: 18px;
 }
 
 .advanced-section {
     display: grid;
-    gap: 12px;
-    padding: 16px;
+    gap: 14px;
+    padding: 18px;
     border-radius: 18px;
     border: 1px solid var(--border);
     background: rgba(255, 255, 255, 0.02);
@@ -692,7 +900,7 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 .impact-list,
 .playground-rule-list {
     display: grid;
-    gap: 12px;
+    gap: 14px;
 }
 
 .impact-item,
@@ -700,8 +908,9 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 .history-item {
     border-radius: 18px;
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
-    padding: 14px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+    padding: 16px;
+    box-shadow: var(--shadow-card);
 }
 
 .impact-item strong,
@@ -743,8 +952,8 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 .playground-rule {
     border-radius: 16px;
     border: 1px solid var(--border);
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.02);
+    padding: 13px 14px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02));
 }
 
 .playground-rule.winner {
@@ -762,7 +971,7 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
     padding: 12px 14px;
     border-radius: 16px;
     border: 1px solid var(--border);
-    background: rgba(8, 12, 19, 0.82);
+    background: linear-gradient(180deg, rgba(11, 16, 26, 0.98), rgba(8, 12, 19, 0.9));
     color: #f9fafb;
     font: 400 12px/1.55 Consolas, "Courier New", monospace;
     overflow-x: auto;
@@ -786,7 +995,7 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
     gap: 8px;
     border-radius: 999px;
     padding: 8px 10px;
-    background: rgba(255, 122, 24, 0.12);
+    background: linear-gradient(135deg, rgba(255, 122, 24, 0.16), rgba(255, 122, 24, 0.08));
     border: 1px solid rgba(255, 122, 24, 0.18);
     color: var(--headline);
     font-size: 12px;
@@ -800,11 +1009,12 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
     cursor: pointer;
     border-radius: 999px;
     padding: 7px 10px;
-    background: rgba(255, 255, 255, 0.06);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
     color: var(--text);
     box-shadow: inset 0 0 0 1px var(--border);
     font: 400 11px/1 var(--font-ui);
     flex: 0 0 auto;
+    transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease, border-color 150ms ease;
 }
 
 .drag-handle {
@@ -833,7 +1043,7 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
     border-radius: 14px;
     padding: 10px 12px;
     border: 1px solid rgba(255, 190, 133, 0.18);
-    background: rgba(255, 190, 133, 0.08);
+    background: linear-gradient(145deg, rgba(255, 190, 133, 0.11), rgba(255, 190, 133, 0.06));
     color: var(--text);
     font-size: 12px;
 }
@@ -936,7 +1146,7 @@ body[data-manager-surface="sidebar"] .compact-config-item .button {
 @media (max-width: 720px) {
     .manager {
         padding: 18px 16px 24px;
-        gap: 18px;
+        gap: 20px;
     }
 
     .masthead,

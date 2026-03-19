@@ -11,6 +11,8 @@
     let targetFilter = restored.targetFilter || "all";
     let diagnosticsFilter = restored.diagnosticsFilter || "all";
     let openCards = new Set(restored.openCards || []);
+    let hasExplicitTreeState = Boolean(restored.hasExplicitTreeState) || Array.isArray(restored.openTreeNodes);
+    let openTreeNodes = new Set(restored.openTreeNodes || []);
     let playgroundInputs = restored.playgroundInputs || {};
     let playgroundResults = restored.playgroundResults || {};
 
@@ -30,9 +32,113 @@
             targetFilter,
             diagnosticsFilter,
             openCards: Array.from(openCards),
+            hasExplicitTreeState,
+            openTreeNodes: Array.from(openTreeNodes),
             playgroundInputs,
             playgroundResults
         });
+    }
+
+    function isTreeNodeOpen(id, depth) {
+        if (openTreeNodes.has(id)) {
+            return true;
+        }
+
+        return !hasExplicitTreeState && depth <= 1;
+    }
+
+    function escapeSelectorValue(value) {
+        if (window.CSS && typeof window.CSS.escape === "function") {
+            return window.CSS.escape(value);
+        }
+
+        return String(value).replace(/["\\]/g, "\\$&");
+    }
+
+    function createElementFromHtml(html) {
+        const template = document.createElement("template");
+        template.innerHTML = html.trim();
+        return template.content.firstElementChild;
+    }
+
+    function findModuleTreeNode(nodes, treeId, depth) {
+        for (const node of nodes || []) {
+            if (node.id === treeId) {
+                return { node, depth };
+            }
+
+            const nested = findModuleTreeNode(node.children || [], treeId, depth + 1);
+            if (nested) {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    function findTreeTarget(treeId) {
+        for (const workspaceTree of state.moduleTree || []) {
+            const workspaceTreeId = `workspace:${workspaceTree.workspaceUri}`;
+            if (workspaceTreeId === treeId) {
+                return { kind: "workspace", workspaceTree };
+            }
+
+            const match = findModuleTreeNode(workspaceTree.roots || [], treeId, 0);
+            if (match) {
+                return { kind: "node", ...match };
+            }
+        }
+
+        return null;
+    }
+
+    function rerenderTreeNodeInPlace(treeId) {
+        const selector = `[data-tree-id="${escapeSelectorValue(treeId)}"]`;
+        const current = document.querySelector(selector);
+        const target = findTreeTarget(treeId);
+
+        if (!(current instanceof HTMLElement) || !target) {
+            render();
+            return;
+        }
+
+        const html = target.kind === "workspace"
+            ? renderModuleTreeWorkspace(target.workspaceTree)
+            : renderModuleTreeNode(target.node, target.depth);
+        const replacement = createElementFromHtml(html);
+
+        if (!(replacement instanceof HTMLElement)) {
+            render();
+            return;
+        }
+
+        const activeElement = document.activeElement;
+        const shouldRestoreFocus = activeElement instanceof Element && current.contains(activeElement);
+        current.replaceWith(replacement);
+
+        if (shouldRestoreFocus) {
+            const summary = replacement.querySelector(".module-tree-summary");
+            if (summary instanceof HTMLElement) {
+                summary.focus({ preventScroll: true });
+            }
+        }
+    }
+
+    function setTreeNodeOpenState(treeId, depth, nextOpen) {
+        const currentOpen = isTreeNodeOpen(treeId, depth);
+        if (currentOpen === nextOpen) {
+            return;
+        }
+
+        if (nextOpen) {
+            openTreeNodes.add(treeId);
+        } else {
+            openTreeNodes.delete(treeId);
+        }
+
+        hasExplicitTreeState = true;
+        persist();
+        rerenderTreeNodeInPlace(treeId);
     }
 
     function renderRuntimeError(message) {
@@ -247,52 +353,103 @@
 
     function renderModuleTreeNode(node, depth) {
         const indentation = Math.max(0, depth) * 18;
+        const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+        const isOpen = hasChildren ? isTreeNodeOpen(node.id, depth) : false;
+        const actions = `
+            <div class="card-actions">
+                ${node.sourceFileUri ? `<button class="mini-button" data-action="open-file" data-uri="${escapeHtml(node.sourceFileUri)}">Open</button>` : ""}
+                ${node.childContainerUri ? `<button class="mini-button" data-action="create-module-pair" data-uri="${escapeHtml(node.childContainerUri)}">New Child</button>` : ""}
+                ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="pub">pub</button>` : ""}
+                ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="pub(crate)">pub(crate)</button>` : ""}
+                ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="private">private</button>` : ""}
+                ${node.movableToCrateRoot && node.sourceFileUri ? `<button class="mini-button" data-action="move-module-to-crate-root" data-uri="${escapeHtml(node.sourceFileUri)}">Move to Crate Root</button>` : ""}
+            </div>
+        `;
+
+        if (!hasChildren) {
+            return `
+                <div class="module-tree-node module-tree-leaf" style="--tree-depth:${indentation}px">
+                    <div class="module-tree-node-main">
+                        <div>
+                            <strong>${escapeHtml(node.name)}</strong>
+                            <div class="helper">${escapeHtml(node.relativePath)}</div>
+                        </div>
+                        <div class="tag-row">
+                            <span class="badge">${escapeHtml(node.layout)}</span>
+                            ${node.visibility ? `<span class="badge">${escapeHtml(node.visibility)}</span>` : ""}
+                        </div>
+                    </div>
+                    ${actions}
+                </div>
+            `;
+        }
+
         return `
-            <div class="module-tree-node" style="--tree-depth:${indentation}px">
-                <div class="module-tree-node-main">
-                    <div>
-                        <strong>${escapeHtml(node.name)}</strong>
-                        <div class="helper">${escapeHtml(node.relativePath)}</div>
+            <details
+                class="module-tree-node module-tree-branch"
+                data-role="tree-node"
+                data-tree-id="${escapeHtml(node.id)}"
+                data-tree-depth="${depth}"
+                style="--tree-depth:${indentation}px"
+                ${isOpen ? "open" : ""}
+            >
+                <summary class="module-tree-summary">
+                    <div class="module-tree-node-main">
+                        <div>
+                            <strong>${escapeHtml(node.name)}</strong>
+                            <div class="helper">${escapeHtml(node.relativePath)}</div>
+                        </div>
+                        <div class="tag-row">
+                            <span class="badge">${escapeHtml(node.layout)}</span>
+                            ${node.visibility ? `<span class="badge">${escapeHtml(node.visibility)}</span>` : ""}
+                            <span class="tree-count">${node.children.length}</span>
+                        </div>
                     </div>
-                    <div class="tag-row">
-                        <span class="badge">${escapeHtml(node.layout)}</span>
-                        ${node.visibility ? `<span class="badge">${escapeHtml(node.visibility)}</span>` : ""}
-                    </div>
-                </div>
-                <div class="card-actions">
-                    ${node.sourceFileUri ? `<button class="mini-button" data-action="open-file" data-uri="${escapeHtml(node.sourceFileUri)}">Open</button>` : ""}
-                    ${node.childContainerUri ? `<button class="mini-button" data-action="create-module-pair" data-uri="${escapeHtml(node.childContainerUri)}">New Child</button>` : ""}
-                    ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="pub">pub</button>` : ""}
-                    ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="pub(crate)">pub(crate)</button>` : ""}
-                    ${node.sourceFileUri ? `<button class="mini-button" data-action="set-module-visibility" data-uri="${escapeHtml(node.sourceFileUri)}" data-visibility="private">private</button>` : ""}
-                    ${node.movableToCrateRoot && node.sourceFileUri ? `<button class="mini-button" data-action="move-module-to-crate-root" data-uri="${escapeHtml(node.sourceFileUri)}">Move to Crate Root</button>` : ""}
-                </div>
-                ${node.children && node.children.length > 0 ? `
-                    <div class="module-tree-children">
-                        ${node.children.map(child => renderModuleTreeNode(child, depth + 1)).join("")}
+                </summary>
+                ${isOpen ? `
+                    <div class="module-tree-body">
+                        ${actions}
+                        <div class="module-tree-children">
+                            ${node.children.map(child => renderModuleTreeNode(child, depth + 1)).join("")}
+                        </div>
                     </div>
                 ` : ""}
-            </div>
+            </details>
         `;
     }
 
     function renderModuleTreeWorkspace(workspaceTree) {
+        const workspaceTreeId = `workspace:${workspaceTree.workspaceUri}`;
+        const isOpen = isTreeNodeOpen(workspaceTreeId, 0);
         return `
-            <article class="panel">
-                <div class="panel-header">
+            <details
+                class="panel module-tree-workspace"
+                data-role="tree-node"
+                data-tree-id="${escapeHtml(workspaceTreeId)}"
+                data-tree-depth="0"
+                ${isOpen ? "open" : ""}
+            >
+                <summary class="module-tree-summary workspace-tree-summary">
                     <div>
                         <h2>${escapeHtml(workspaceTree.workspaceName)}</h2>
                         <div class="helper">Tree built from crate roots and current module declarations.</div>
                     </div>
-                    <button class="mini-button" data-action="reveal-folder" data-uri="${escapeHtml(workspaceTree.workspaceUri)}">Reveal Workspace</button>
-                </div>
-                <div class="module-tree-root">
-                    ${workspaceTree.roots && workspaceTree.roots.length > 0
-                        ? workspaceTree.roots.map(rootNode => renderModuleTreeNode(rootNode, 0)).join("")
-                        : `<div class="empty-state small">No crate roots were found under this workspace yet.</div>`
-                    }
-                </div>
-            </article>
+                    <div class="tag-row">
+                        <span class="badge">${workspaceTree.roots.length} roots</span>
+                        <button class="mini-button" data-action="reveal-folder" data-uri="${escapeHtml(workspaceTree.workspaceUri)}">Reveal Workspace</button>
+                    </div>
+                </summary>
+                ${isOpen ? `
+                    <div class="module-tree-body">
+                        <div class="module-tree-root">
+                        ${workspaceTree.roots && workspaceTree.roots.length > 0
+                            ? workspaceTree.roots.map(rootNode => renderModuleTreeNode(rootNode, 0)).join("")
+                            : `<div class="empty-state small">No crate roots were found under this workspace yet.</div>`
+                        }
+                        </div>
+                    </div>
+                ` : ""}
+            </details>
         `;
     }
 
@@ -496,9 +653,43 @@
             return;
         }
 
+        if (event.target.closest("[data-action]")) {
+            return;
+        }
+
+        const summary = event.target.closest(".module-tree-summary");
+        if (!(summary instanceof HTMLElement)) {
+            return;
+        }
+
+        const details = summary.parentElement;
+        if (!(details instanceof HTMLDetailsElement) || details.getAttribute("data-role") !== "tree-node") {
+            return;
+        }
+
+        event.preventDefault();
+
+        const treeId = details.getAttribute("data-tree-id");
+        if (!treeId) {
+            return;
+        }
+
+        const depth = Number(details.getAttribute("data-tree-depth") || 0);
+        setTreeNodeOpenState(treeId, depth, !isTreeNodeOpen(treeId, depth));
+    });
+
+    root.addEventListener("click", event => {
+        if (!(event.target instanceof Element)) {
+            return;
+        }
+
         const target = event.target.closest("[data-action]");
         if (!target) {
             return;
+        }
+
+        if (target.closest(".module-tree-summary")) {
+            event.preventDefault();
         }
 
         const action = target.getAttribute("data-action");
@@ -618,21 +809,46 @@
 
     root.addEventListener("toggle", event => {
         const target = event.target;
-        if (!(target instanceof HTMLDetailsElement) || target.getAttribute("data-role") !== "config-card") {
+        if (!(target instanceof HTMLDetailsElement)) {
             return;
         }
 
-        const uri = target.getAttribute("data-uri");
-        if (!uri) {
+        if (target.getAttribute("data-role") === "config-card") {
+            const uri = target.getAttribute("data-uri");
+            if (!uri) {
+                return;
+            }
+
+            const wasOpen = openCards.has(uri);
+            if (target.open === wasOpen) {
+                return;
+            }
+
+            if (target.open) {
+                openCards.add(uri);
+            } else {
+                openCards.delete(uri);
+            }
+            persist();
             return;
         }
 
-        if (target.open) {
-            openCards.add(uri);
-        } else {
-            openCards.delete(uri);
+        if (target.getAttribute("data-role") !== "tree-node") {
+            return;
         }
-        persist();
+
+        const treeId = target.getAttribute("data-tree-id");
+        if (!treeId) {
+            return;
+        }
+
+        const depth = Number(target.getAttribute("data-tree-depth") || 0);
+        const wasOpen = isTreeNodeOpen(treeId, depth);
+        if (target.open === wasOpen) {
+            return;
+        }
+
+        setTreeNodeOpenState(treeId, depth, target.open);
     }, true);
 
     window.addEventListener("message", event => {
