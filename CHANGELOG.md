@@ -2,6 +2,33 @@
 
 ## [Released]
 
+### 1.7.0
+
+This release expands Rust AutoMod beyond `mod.rs`-only workflows, adding support for the modern Rust module layout, module-tree actions in Studio, smarter visibility tooling, and more robust manager behavior.
+
+#### Added
+
+- Automatic detection of classic `folder/mod.rs` and modern `folder.rs + folder/` module layouts.
+- `Create Rust Module Pair` for scaffolding a child module with the correct file/folder shape and registering it in the parent target.
+- `Set Module Visibility` for quickly switching a module declaration between `pub`, `pub(crate)`, and private.
+- `Move Module to Crate Root` for relocating eligible leaf modules and regenerating declarations afterward.
+- Studio manager module tree built from crate roots and resolved module declarations.
+- Quick actions on module-tree nodes for opening files, creating children, changing visibility, and moving leaf modules upward.
+- Integration coverage for modern target detection, modern module-pair creation, and module-tree rendering.
+
+#### Changed
+
+- `target=auto` now resolves folder modules with awareness of the surrounding project layout instead of assuming `mod.rs`.
+- Regeneration now understands modern module-pair registration files when removing stale declarations.
+- The Studio manager spacing was reworked so cards, badges, action rows, impact panels, audit panels, and playground blocks breathe better.
+- README and Studio docs now document modern layouts, module-pair workflows, visibility controls, and the new module tree.
+
+#### Fixed
+
+- Manager refresh now tolerates workspace folders that were removed during tests or teardown instead of logging internal refresh failures.
+- Module-visibility edits now preserve attached `#[cfg(...)]` lines while updating the declaration itself.
+- Manager card actions now stay aligned to the correct config even when filters are active.
+
 ### 1.6.0
 
 This release turns Rust AutoMod Studio into a deeper configuration surface, with comment-preserving visual saves, real draft state tracking, richer impact/audit tooling, and a more capable manager UI.

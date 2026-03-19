@@ -3,6 +3,7 @@
     --accent: #ff7a18;
     --accent-strong: #ff9a4d;
     --accent-soft: #ffbe85;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.25 4.5L6 8.25L9.75 4.5' stroke='%23ffbe85' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --font-ui: "Varela Round", "Segoe UI Variable", "Trebuchet MS", sans-serif;
     --font-display: "Varela Round", "Segoe UI Variable", "Trebuchet MS", sans-serif;
     --headline: var(--vscode-editor-foreground);
@@ -27,6 +28,10 @@ body {
         var(--vscode-editor-background);
     color: var(--text);
     font: 400 13px/1.6 var(--font-ui);
+}
+
+body[data-manager-surface="sidebar"] {
+    overflow-x: hidden;
 }
 
 body::before {
@@ -117,6 +122,7 @@ body::before {
 .helper {
     color: var(--text-muted);
     font-size: 12px;
+    line-height: 1.55;
 }
 
 .metric {
@@ -151,11 +157,21 @@ body::before {
     align-items: center;
 }
 
+.card-actions {
+    row-gap: 14px;
+    column-gap: 12px;
+}
+
 .editor-shell,
 .manager {
     display: grid;
     gap: 24px;
-    padding: 24px;
+    padding: 26px 24px 32px;
+}
+
+body[data-manager-surface="sidebar"] .manager.compact {
+    gap: 16px;
+    padding: 16px;
 }
 
 .hero,
@@ -315,6 +331,31 @@ body::before {
     font: 400 13px/1.5 var(--font-ui);
 }
 
+.field select,
+.manager-toolbar select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 40px;
+    background-image:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 122, 24, 0.06)),
+        var(--select-chevron);
+    background-repeat: no-repeat, no-repeat;
+    background-position: 0 0, calc(100% - 14px) 50%;
+    background-size: auto, 12px 12px;
+}
+
+.field select::-ms-expand,
+.manager-toolbar select::-ms-expand {
+    display: none;
+}
+
+.field select option,
+.manager-toolbar select option {
+    background: #171c25;
+    color: #f3f4f6;
+}
+
 .field textarea,
 .raw-pane textarea {
     resize: vertical;
@@ -394,6 +435,10 @@ body::before {
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
 }
 
+.compact-summary {
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
 .summary-card strong {
     font-size: 22px;
     color: var(--headline);
@@ -435,6 +480,52 @@ body::before {
     align-items: center;
 }
 
+.compact-launcher {
+    gap: 16px;
+}
+
+.compact-launcher h1 {
+    margin: 0;
+    font: 400 28px/1.1 var(--font-display);
+    color: var(--headline);
+}
+
+.compact-launcher p {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.compact-config-list {
+    display: grid;
+    gap: 12px;
+}
+
+.compact-config-item {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.compact-config-item strong {
+    display: block;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+body[data-manager-surface="sidebar"] .compact-launcher .card-actions,
+body[data-manager-surface="sidebar"] .compact-config-item .card-actions {
+    width: 100%;
+}
+
+body[data-manager-surface="sidebar"] .compact-launcher .button,
+body[data-manager-surface="sidebar"] .compact-config-item .mini-button,
+body[data-manager-surface="sidebar"] .compact-config-item .button {
+    justify-content: center;
+}
+
 .manager .section-title,
 .manager .panel-header {
     margin-bottom: 4px;
@@ -446,7 +537,7 @@ body::before {
 }
 
 .manager .card-actions {
-    margin-top: 6px;
+    margin-top: 8px;
     row-gap: 14px;
 }
 
@@ -461,6 +552,14 @@ body::before {
 .playground-rule {
     display: grid;
     gap: 12px;
+}
+
+.impact-list,
+.diagnostic-list,
+.workspace-list,
+.config-list,
+.stack {
+    gap: 16px;
 }
 
 .impact-item .hero-actions,
@@ -605,6 +704,14 @@ body::before {
     padding: 14px;
 }
 
+.impact-item strong,
+.module-tree-node strong,
+.diagnostic-item strong {
+    display: block;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
 .impact-item.matched,
 .badge-success {
     border-color: rgba(83, 213, 145, 0.24);
@@ -697,6 +804,7 @@ body::before {
     color: var(--text);
     box-shadow: inset 0 0 0 1px var(--border);
     font: 400 11px/1 var(--font-ui);
+    flex: 0 0 auto;
 }
 
 .drag-handle {
@@ -822,5 +930,40 @@ body::before {
 
     .config-card .field-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .manager {
+        padding: 18px 16px 24px;
+        gap: 18px;
+    }
+
+    .masthead,
+    .hero,
+    .panel,
+    .config-card,
+    .summary-card,
+    .rule-card {
+        border-radius: 20px;
+    }
+
+    .masthead h1,
+    .hero h1,
+    .compact-launcher h1 {
+        font-size: 28px;
+    }
+
+    .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .panel-summary {
+        gap: 12px;
+    }
+
+    .panel-summary > div:first-child,
+    .module-tree-node-main > div:first-child {
+        min-width: 0;
     }
 }

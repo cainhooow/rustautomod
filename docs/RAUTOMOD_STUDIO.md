@@ -136,7 +136,30 @@ What you can do from the manager:
 - open configs that currently have diagnostics
 - inspect sampled impact items and jump to source/target files
 - run a per-config why/why-not playground without leaving the manager
+- inspect a visual module tree built from crate roots and resolved module declarations
+- create child modules directly from tree nodes using the detected classic or modern layout
+- switch a module node between `pub`, `pub(crate)`, and private
+- move eligible leaf modules to the crate root from the tree
 - jump to the Rust AutoMod log
+
+## Module tree and layout awareness
+
+The manager now includes a module tree that is driven by the actual Rust declarations, not just the folder structure.
+
+That means it can distinguish:
+
+- crate roots such as `lib.rs` and `main.rs`
+- classic folder roots like `feature/mod.rs`
+- modern folder roots like `feature.rs` with a sibling `feature/`
+- leaf modules like `helpers.rs`
+- missing declarations that exist in the tree but do not currently resolve to a file
+
+The same layout awareness powers `Create Rust Module Pair`, so when you create a child module from the tree:
+
+- classic folders get `child/mod.rs`
+- modern folders get `child.rs` plus `child/`
+
+The tree is especially useful when you are cleaning up bigger module hierarchies and want visibility or placement actions without manually opening every parent file.
 
 ## How the visual layer relates to the raw file
 

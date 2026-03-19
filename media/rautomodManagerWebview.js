@@ -2,6 +2,8 @@
     const vscode = acquireVsCodeApi();
     const root = document.getElementById("root");
     const restored = vscode.getState() || {};
+    const managerSurface = document.body.getAttribute("data-manager-surface") || "panel";
+    const isSidebarSurface = managerSurface === "sidebar";
 
     let state = { configs: [], workspaceFolders: [], auditSummary: {}, moduleTree: [] };
     let search = restored.search || "";
@@ -294,7 +296,88 @@
         `;
     }
 
+    function renderSidebarLauncher() {
+        const diagnostics = (state.configs || []).reduce((sum, config) => sum + Number(config.diagnosticCount || 0), 0);
+        const rules = (state.configs || []).reduce((sum, config) => sum + Number(config.ruleCount || 0), 0);
+        const recentConfigs = (state.configs || []).slice(0, 3);
+        const workspaceRoots = (state.workspaceFolders || []).slice(0, 3);
+
+        root.innerHTML = `
+            <div class="manager compact">
+                <section class="panel compact-launcher studio-animated">
+                    <div class="eyebrow">Rust AutoMod Studio</div>
+                    <h1>Open Full Studio</h1>
+                    <p>The full manager now opens in the editor area, where it has enough space for audits, module trees, and config tools.</p>
+                    <div class="card-actions">
+                        <button class="button primary" data-action="open-manager-panel">Open Full Studio</button>
+                        <button class="button ghost" data-action="open-log">Open Log</button>
+                    </div>
+                </section>
+                <section class="summary-grid compact-summary">
+                    <div class="summary-card"><span class="helper">Configs</span><strong>${state.configs.length}</strong></div>
+                    <div class="summary-card"><span class="helper">Rules</span><strong>${rules}</strong></div>
+                    <div class="summary-card"><span class="helper">Diagnostics</span><strong>${diagnostics}</strong></div>
+                </section>
+                <section class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Quick Actions</h2>
+                            <div class="helper">Jump straight to the editor-sized experience or scaffold the first config.</div>
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="button secondary" data-action="refresh">Refresh</button>
+                        <button class="button ghost" data-action="open-diagnostic-configs">Open Diagnostic Configs</button>
+                    </div>
+                    ${workspaceRoots.length > 0 ? `
+                        <div class="compact-config-list">
+                            ${workspaceRoots.map((folder, index) => `
+                                <div class="compact-config-item">
+                                    <div>
+                                        <strong>${escapeHtml(folder.name)}</strong>
+                                        <div class="helper">${escapeHtml(folder.uri)}</div>
+                                    </div>
+                                    <button class="mini-button" data-action="scaffold" data-workspace-index="${index}">Scaffold</button>
+                                </div>
+                            `).join("")}
+                        </div>
+                    ` : ""}
+                </section>
+                <section class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Recent Configs</h2>
+                            <div class="helper">Open a config directly, or jump into the full Studio for the workspace-wide manager.</div>
+                        </div>
+                    </div>
+                    <div class="compact-config-list">
+                        ${recentConfigs.length > 0
+                            ? recentConfigs.map(config => `
+                                <div class="compact-config-item">
+                                    <div>
+                                        <strong>${escapeHtml(config.relativePath)}</strong>
+                                        <div class="helper">${escapeHtml(config.workspaceName || "Workspace")}</div>
+                                    </div>
+                                    <div class="card-actions">
+                                        <button class="mini-button" data-action="open-visual" data-uri="${escapeHtml(config.uri)}">Visual</button>
+                                        <button class="mini-button" data-action="open-raw" data-uri="${escapeHtml(config.uri)}">Raw</button>
+                                    </div>
+                                </div>
+                            `).join("")
+                            : '<div class="empty-state small">No .rautomod files found yet. Scaffold one and then open the full Studio.</div>'
+                        }
+                    </div>
+                </section>
+            </div>
+        `;
+    }
+
     function render() {
+        if (isSidebarSurface) {
+            renderSidebarLauncher();
+            return;
+        }
+
         const configs = getFilteredConfigs();
         const summary = state.auditSummary || {};
         const diagnostics = (state.configs || []).reduce((sum, config) => sum + Number(config.diagnosticCount || 0), 0);

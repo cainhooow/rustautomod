@@ -231,7 +231,17 @@ export async function collectRautomodManagerState(): Promise<RautomodManagerStat
             shadowedFiles: configs.reduce((sum, config) => sum + config.audit.shadowedFileCount, 0),
             uncoveredFiles: configs.reduce((sum, config) => sum + config.audit.uncoveredFileCount, 0)
         },
-        moduleTree: await Promise.all((vscode.workspace.workspaceFolders ?? []).map(collectWorkspaceModuleTree))
+        moduleTree: await Promise.all((vscode.workspace.workspaceFolders ?? []).map(async workspaceFolder => {
+            try {
+                return await collectWorkspaceModuleTree(workspaceFolder);
+            } catch (error) {
+                if (isMissingPathError(error)) {
+                    return createEmptyWorkspaceModuleTree(workspaceFolder);
+                }
+
+                throw error;
+            }
+        }))
     };
 }
 
@@ -485,6 +495,10 @@ async function evaluatePlaygroundPath(
 }
 
 async function collectNestedConfigPaths(rootFolderPath: string, currentConfigPath: string): Promise<string[]> {
+    if (!await fileExists(rootFolderPath)) {
+        return [];
+    }
+
     const nestedPaths: string[] = [];
 
     async function walk(directory: string): Promise<void> {
@@ -512,6 +526,10 @@ async function collectNestedConfigPaths(rootFolderPath: string, currentConfigPat
 }
 
 async function collectRustFilesUnder(rootFolderPath: string): Promise<string[]> {
+    if (!await fileExists(rootFolderPath)) {
+        return [];
+    }
+
     const rustFiles: string[] = [];
 
     async function walk(directory: string): Promise<void> {
@@ -547,6 +565,10 @@ async function collectRustFilesUnder(rootFolderPath: string): Promise<string[]> 
 async function collectWorkspaceModuleTree(
     workspaceFolder: vscode.WorkspaceFolder
 ): Promise<RautomodWorkspaceModuleTree> {
+    if (!await fileExists(workspaceFolder.uri.fsPath)) {
+        return createEmptyWorkspaceModuleTree(workspaceFolder);
+    }
+
     const crateRoots = await collectCrateRootFiles(workspaceFolder.uri.fsPath);
     const roots = await Promise.all(crateRoots.map(crateRoot =>
         buildModuleTreeFromRegistrationFile(
@@ -574,6 +596,16 @@ async function collectWorkspaceModuleTree(
         workspaceName: workspaceFolder.name,
         workspaceUri: workspaceFolder.uri.toString(),
         roots
+    };
+}
+
+function createEmptyWorkspaceModuleTree(
+    workspaceFolder: vscode.WorkspaceFolder
+): RautomodWorkspaceModuleTree {
+    return {
+        workspaceName: workspaceFolder.name,
+        workspaceUri: workspaceFolder.uri.toString(),
+        roots: []
     };
 }
 
@@ -697,6 +729,10 @@ async function resolveChildModuleSourcePath(
 }
 
 async function collectCrateRootFiles(workspaceRootPath: string): Promise<string[]> {
+    if (!await fileExists(workspaceRootPath)) {
+        return [];
+    }
+
     const crateRoots: string[] = [];
 
     async function walk(directory: string): Promise<void> {
@@ -733,6 +769,13 @@ async function readFileIfExists(filePath: string): Promise<string | null> {
     } catch {
         return null;
     }
+}
+
+function isMissingPathError(error: unknown): boolean {
+    return typeof error === "object"
+        && error !== null
+        && "code" in error
+        && (error as { code?: string }).code === "ENOENT";
 }
 
 async function resolveTargetFilePathForRule(folderPath: string, rule: AutomodRule): Promise<string | null> {

@@ -2,6 +2,8 @@ import * as assert from "assert";
 import * as path from "path";
 import { promises as fs } from "fs";
 import * as vscode from "vscode";
+import { collectRautomodManagerState } from "../ui/rautomodStudioService";
+import { resolveModuleRegistrationTarget } from "../automod/modFileSystem";
 import {
     activateCurrentExtension,
     addWorkspaceFolder,
@@ -41,6 +43,8 @@ suite("Extension Integration", () => {
         await fs.rm(path.join(workspacePath, ".rautomod"), { force: true });
         await vscode.workspace.getConfiguration("rustautomod", workspaceFolder.uri)
             .update("previewBeforeApply", false, vscode.ConfigurationTarget.Workspace);
+        await vscode.workspace.getConfiguration("rustautomod", workspaceFolder.uri)
+            .update("moduleLayout", "auto", vscode.ConfigurationTarget.Workspace);
         await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     });
 
@@ -258,6 +262,88 @@ cfg=feature="serde",all(unix, target_pointer_width = "64")
         assert.strictEqual(activeDocument?.languageId, "markdown");
         assert.ok(activeDocument?.getText().includes("Effective Rust AutoMod Config"));
         assert.ok(activeDocument?.getText().includes("\"visibility\": \"private\""));
+    });
+
+    test("detects modern registration targets without relying on mod.rs", async function () {
+        this.timeout(10000);
+
+        const applicationFolder = path.join(workspacePath, "src", "application");
+        await fs.mkdir(applicationFolder, { recursive: true });
+        await fs.writeFile(path.join(workspacePath, "src", "application.rs"), "pub mod queries;\n", "utf8");
+
+        const target = await resolveModuleRegistrationTarget(applicationFolder, "auto");
+
+        assert.ok(target);
+        assert.strictEqual(target?.kind, "modern");
+        assert.strictEqual(target?.filePath, path.join(workspacePath, "src", "application.rs"));
+    });
+
+    test("creates a modern file-folder module pair and registers the selected visibility", async function () {
+        this.timeout(10000);
+
+        const libPath = path.join(workspacePath, "src", "lib.rs");
+        await fs.writeFile(libPath, "", "utf8");
+        await vscode.workspace.getConfiguration("rustautomod", workspaceFolder.uri)
+            .update("moduleLayout", "modern", vscode.ConfigurationTarget.Workspace);
+
+        const windowApi = vscode.window as unknown as {
+            showInputBox: (...args: unknown[]) => Promise<unknown>;
+            showQuickPick: (...args: unknown[]) => Promise<unknown>;
+        };
+        const originalInputBox = windowApi.showInputBox;
+        const originalQuickPick = windowApi.showQuickPick;
+        windowApi.showInputBox = async () => "orders";
+        windowApi.showQuickPick = async () => ({
+            label: "pub(crate)",
+            description: "Visible across the current crate"
+        } as vscode.QuickPickItem);
+
+        try {
+            await vscode.commands.executeCommand("rustautomod.createModulePair", vscode.Uri.file(path.join(workspacePath, "src")));
+        } finally {
+            windowApi.showInputBox = originalInputBox;
+            windowApi.showQuickPick = originalQuickPick;
+        }
+
+        const createdFile = path.join(workspacePath, "src", "orders.rs");
+        const createdFolder = path.join(workspacePath, "src", "orders");
+
+        await waitForCondition(async () => {
+            try {
+                const libText = await fs.readFile(libPath, "utf8");
+                await fs.access(createdFile);
+                await fs.access(createdFolder);
+                return libText.includes("pub(crate) mod orders;");
+            } catch {
+                return false;
+            }
+        }, 5000, 100);
+    });
+
+    test("builds a module tree that reflects modern roots and nested visibility", async function () {
+        this.timeout(10000);
+
+        const appFolder = path.join(workspacePath, "src", "application");
+        await fs.mkdir(appFolder, { recursive: true });
+        await fs.writeFile(path.join(workspacePath, "src", "lib.rs"), "pub mod application;\n", "utf8");
+        await fs.writeFile(path.join(workspacePath, "src", "application.rs"), "pub(crate) mod queries;\nmod helpers;\n", "utf8");
+        await fs.writeFile(path.join(appFolder, "queries.rs"), "pub fn run() {}\n", "utf8");
+        await fs.writeFile(path.join(appFolder, "helpers.rs"), "pub fn hidden() {}\n", "utf8");
+
+        const managerState = await collectRautomodManagerState();
+        const workspaceTree = managerState.moduleTree.find(tree => tree.workspaceUri === workspaceFolder.uri.toString());
+        const crateRoot = workspaceTree?.roots.find(node => node.name === "lib");
+        const applicationNode = crateRoot?.children.find(node => node.name === "application");
+        const queriesNode = applicationNode?.children.find(node => node.name === "queries");
+        const helpersNode = applicationNode?.children.find(node => node.name === "helpers");
+
+        assert.ok(workspaceTree);
+        assert.ok(crateRoot);
+        assert.ok(applicationNode);
+        assert.strictEqual(applicationNode?.layout, "modern");
+        assert.strictEqual(queriesNode?.visibility, "pub(crate)");
+        assert.strictEqual(queriesNode?.layout, "leaf");
+        assert.strictEqual(helpersNode?.visibility, "private");
     });
 });
 

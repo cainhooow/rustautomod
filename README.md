@@ -4,7 +4,7 @@
 
 Art produced by [Saki](https://instagram.com/sak1_sk)
 
-Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports richer `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smart `mod.rs` visibility controls plus preview, undo, regenerate, explain, and Studio-style config workflows inside VS Code.
+Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports both the classic `folder/mod.rs` layout and the modern `folder.rs + folder/` layout, supports richer `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smart `mod.rs` visibility controls plus preview, undo, regenerate, explain, module-tree, and Studio-style config workflows inside VS Code.
 
 ## Documentation
 
@@ -16,15 +16,17 @@ Rust Automod is a Visual Studio Code extension that keeps Rust module files in s
 
 - Creates `mod.rs` when a new Rust file appears in a module folder.
 - Updates `mod.rs`, `lib.rs`, or `main.rs` when modules are added or removed.
+- Detects whether a folder follows the classic `mod.rs` style or the modern `folder.rs + folder/` style.
+- Can create a modern or classic module pair automatically, including the sibling file/folder structure.
 - Supports nested folders and parent module registration.
 - Supports `.rautomod` rules for visibility, sorting, target selection, excludes, inheritance, generated comments, strict validation, and more.
 - Can run `cargo fmt` after updates.
 - Adds a dedicated file icon, syntax highlighting, linting, completions, and formatting for `.rautomod`.
 - Opens `.rautomod` in a custom visual editor with `Visual`, `Split`, and `Raw` modes.
-- Includes a workspace-wide Rust AutoMod manager UI for browsing configs, filtering audits, and scaffolding new ones.
+- Includes a workspace-wide Rust AutoMod manager UI for browsing configs, filtering audits, scaffolding new ones, and visualizing the module tree.
 - Supports preview/dry run, undo of the last automod action, workspace or folder regeneration, and structured logging.
 - Can explain why a file was registered a certain way and show the effective config that won for a Rust file.
-- Can scaffold a `.rautomod` file and ignore files or folders from the Explorer.
+- Can scaffold a `.rautomod` file, ignore files or folders from the Explorer, and change module visibility from quick actions.
 - Hides `mod.rs` more intelligently in the Explorer.
 
 ## How Rust AutoMod decides where to write
@@ -34,7 +36,7 @@ When Rust AutoMod reacts to a file or folder, it follows this general order:
 1. It finds the effective `.rautomod` rule for the file, including inherited rules from `extends=...`.
 2. It checks whether the file is ignored by `exclude=` or by a negative `pattern=!something`.
 3. It resolves the target file:
-   - `target=auto`: tries the crate root target when appropriate, otherwise local `mod.rs`
+   - `target=auto`: tries the crate root target when appropriate, otherwise detects classic `mod.rs` vs modern sibling `folder.rs`
    - `target=mod.rs`: always writes to the local folder `mod.rs`
    - `target=lib.rs`: writes to the nearest `lib.rs`
    - `target=main.rs`: writes to the nearest `main.rs`
@@ -48,12 +50,48 @@ If `strict=error` and the `.rautomod` file has blocking diagnostics, Rust AutoMo
 - `Preview AutoMod Changes`: opens a dry-run summary and diff before writing.
 - `Undo Last AutoMod Action`: restores the previous automod batch without relying on editor undo history.
 - `Regenerate Rust Modules`: rebuilds missing registrations and removes stale ones for a folder or workspace.
+- `Create Rust Module Pair`: scaffolds `name/mod.rs` or `name.rs + name/` based on the detected project style.
+- `Set Module Visibility`: updates the parent declaration to `pub`, `pub(crate)`, or private without manually editing the parent file.
+- `Move Module to Crate Root`: helps relocate a leaf module and rebuild declarations afterward.
 - `Explain AutoMod Decision`: shows target file, winning rule, ordering, and generated snippet preview for a Rust file.
 - `Show Effective AutoMod Config`: opens the resolved config, matched patterns, diagnostics, and source `.rautomod`.
 - `Open Rust AutoMod Log`: opens the structured output channel with automod activity.
 - `Ignore in .rautomod`: prepends an `exclude=` rule for a file or folder from the Explorer.
 - `Scaffold .rautomod`: creates a starter config with the new keys and examples.
 - Conflict detection warns when Rust AutoMod notices manual edits in the managed declaration area before writing again.
+
+## Rust module layout support
+
+Rust AutoMod now works with both major Rust module styles:
+
+- Classic: `feature/mod.rs`
+- Modern: `feature.rs` plus `feature/`
+
+In `rustautomod.moduleLayout`, you can choose:
+
+- `auto`: detect the style from the surrounding project structure
+- `classic`: force `folder/mod.rs`
+- `modern`: force `folder.rs + folder/`
+
+This affects:
+
+- where `target=auto` writes declarations
+- what `Create Rust Module Pair` scaffolds
+- how folder modules appear in the manager module tree
+- how regeneration detects stale declarations
+
+Example modern layout:
+
+```text
+src/
+  lib.rs
+  application.rs
+  application/
+    queries.rs
+    services.rs
+```
+
+With this structure, Rust AutoMod can keep `src/lib.rs` and `src/application.rs` synchronized without depending on `mod.rs`.
 
 ## Rust AutoMod Studio UI
 
@@ -101,6 +139,8 @@ The manager UI gives you:
 - per-config audit cards with duplicate-rule, overlap, ignored, shadowed, and uncovered signals
 - per-config impact samples with open-file and reveal-folder actions
 - a manager-side why/why-not playground for testing individual paths
+- a visual module tree built from crate roots and actual `mod` declarations
+- quick actions on module-tree nodes to create child modules, switch visibility, open files, or move a leaf module to the crate root
 - quick access to the Rust AutoMod log
 
 This manager is meant to feel closer to a product control surface, similar in spirit to a settings UI, while still keeping the actual `.rautomod` file as the source of truth.
@@ -171,6 +211,9 @@ If you run it from the Command Palette, the extension shows a picker with the ma
 - `Show Effective AutoMod Config`
 - `Ignore in .rautomod`
 - `Scaffold .rautomod`
+- `Create Rust Module Pair`
+- `Set Module Visibility`
+- `Move Module to Crate Root`
 - `Open Rust AutoMod Log`
 - `Open .rautomod Visual`
 - `Open .rautomod Raw`
@@ -199,6 +242,26 @@ Use `Regenerate Rust Modules` when:
 - you want to rebuild a whole folder after changing `.rautomod`
 
 This command scans the selected folder or workspace, re-adds missing declarations, and removes stale ones.
+
+### Create classic or modern module pairs
+
+Use `Create Rust Module Pair` on a folder when you want Rust AutoMod to scaffold the next module correctly for the surrounding project style.
+
+Depending on detection or your `rustautomod.moduleLayout` setting, it creates either:
+
+- `orders/mod.rs`
+- `orders.rs` plus `orders/`
+
+It also registers the new module in the correct parent target and asks for the visibility up front.
+
+### Change visibility and move modules
+
+Use:
+
+- `Set Module Visibility` to switch an existing module declaration between `pub`, `pub(crate)`, and private
+- `Move Module to Crate Root` when you want to pull a leaf module upward and then let Rust AutoMod rebuild declarations
+
+These flows are also exposed from the Studio manager module tree when applicable.
 
 ### Explain and inspect
 
@@ -443,6 +506,7 @@ The project now includes:
 - extension integration tests for Explorer commands and `files.exclude`
 - extension integration tests for `.rautomod` language detection and formatting
 - extension integration tests for scaffold, ignore, preview, regenerate, undo, and effective config inspection
+- extension integration tests for modern module layout detection, module-pair creation, and manager module-tree rendering
 - the existing debounce and rename-detection suites
 
 ## Notes

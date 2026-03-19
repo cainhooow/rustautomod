@@ -21,10 +21,7 @@ const sampleRelativePaths = [
     "src/application/usecases/.rautomod",
     "src/domain/builders/.rautomod",
     "src/domain/entities/.rautomod",
-    "src/domain/repositories/.rautomod",
-    "src/infrastructure/interfaces/http/handlers/.rautomod",
-    "src/infrastructure/interfaces/http/resources/.rautomod",
-    "src/infrastructure/interfaces/http/routers/.rautomod"
+    "src/domain/repositories/.rautomod"
 ];
 
 const managerState = {
@@ -109,7 +106,74 @@ const managerState = {
         ignoredFiles: 3,
         shadowedFiles: 0,
         uncoveredFiles: 2
-    }
+    },
+    moduleTree: [
+        {
+            workspaceName: "pdv-server",
+            workspaceUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}`.replace(/ /g, "%20"),
+            roots: [
+                {
+                    id: "crate-lib",
+                    name: "lib",
+                    relativePath: "src/lib.rs",
+                    sourceFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/lib.rs`,
+                    sourceFilePath: path.join(exampleWorkspace, "src", "lib.rs"),
+                    declarationFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/lib.rs`,
+                    kind: "crate",
+                    layout: "crate_root",
+                    canCreateChild: true,
+                    movableToCrateRoot: false,
+                    childContainerUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src`,
+                    children: [
+                        {
+                            id: "module-application",
+                            name: "application",
+                            relativePath: "src/application.rs",
+                            sourceFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/application.rs`,
+                            sourceFilePath: path.join(exampleWorkspace, "src", "application.rs"),
+                            declarationFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/lib.rs`,
+                            visibility: "pub",
+                            kind: "module",
+                            layout: "modern",
+                            canCreateChild: true,
+                            movableToCrateRoot: false,
+                            childContainerUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/application`,
+                            children: [
+                                {
+                                    id: "module-queries",
+                                    name: "queries",
+                                    relativePath: "src/application/queries.rs",
+                                    sourceFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/application/queries.rs`,
+                                    sourceFilePath: path.join(exampleWorkspace, "src", "application", "queries.rs"),
+                                    declarationFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/application.rs`,
+                                    visibility: "pub(crate)",
+                                    kind: "module",
+                                    layout: "leaf",
+                                    canCreateChild: false,
+                                    movableToCrateRoot: true,
+                                    children: []
+                                },
+                                {
+                                    id: "module-services",
+                                    name: "services",
+                                    relativePath: "src/application/services.rs",
+                                    sourceFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/application/services.rs`,
+                                    sourceFilePath: path.join(exampleWorkspace, "src", "application", "services.rs"),
+                                    declarationFileUri: `file:///${exampleWorkspace.replace(/\\/g, "/")}/src/application.rs`,
+                                    visibility: "private",
+                                    kind: "module",
+                                    layout: "leaf",
+                                    canCreateChild: false,
+                                    movableToCrateRoot: true,
+                                    children: []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
 };
 
 const editorState = {
@@ -453,7 +517,7 @@ function main() {
     const visualHtmlPath = writeHtml("editor-visual.html", visualHtml);
     const splitHtmlPath = writeHtml("editor-split.html", splitHtml);
 
-    renderScreenshot(managerHtmlPath, path.join(screenshotsDir, "studio-manager-pdv-server.png"), 1600, 1180);
+    renderScreenshot(managerHtmlPath, path.join(screenshotsDir, "studio-manager-pdv-server.png"), 1600, 1420);
     renderScreenshot(visualHtmlPath, path.join(screenshotsDir, "studio-editor-visual-pdv-server.png"), 1600, 1400);
     renderScreenshot(splitHtmlPath, path.join(screenshotsDir, "studio-editor-split-pdv-server.png"), 1680, 1280);
 }

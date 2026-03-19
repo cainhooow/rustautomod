@@ -57,7 +57,7 @@ export class RautomodManagerViewProvider implements vscode.WebviewViewProvider, 
             );
         });
 
-        webviewView.webview.html = getRautomodManagerHtml(webviewView.webview, this.context.extensionUri);
+        webviewView.webview.html = getRautomodManagerHtml(webviewView.webview, this.context.extensionUri, "sidebar");
         await this.refresh();
     }
 
@@ -151,7 +151,7 @@ export class RautomodManagerPanel implements vscode.Disposable {
             void this.refresh();
         });
 
-        this.panel.webview.html = getRautomodManagerHtml(this.panel.webview, this.context.extensionUri);
+        this.panel.webview.html = getRautomodManagerHtml(this.panel.webview, this.context.extensionUri, "panel");
         void this.refresh();
     }
 

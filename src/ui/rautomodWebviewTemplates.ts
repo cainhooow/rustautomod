@@ -10,15 +10,17 @@ export function getRautomodEditorHtml(
 
 export function getRautomodManagerHtml(
     webview: vscode.Webview,
-    extensionUri: vscode.Uri
+    extensionUri: vscode.Uri,
+    surface: "panel" | "sidebar" = "panel"
 ): string {
-    return getHtmlDocument(webview, extensionUri, "manager");
+    return getHtmlDocument(webview, extensionUri, "manager", surface);
 }
 
 function getHtmlDocument(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
-    kind: "editor" | "manager"
+    kind: "editor" | "manager",
+    managerSurface: "panel" | "sidebar" = "panel"
 ): string {
     const nonce = createNonce();
     const styleUri = toWebviewUri(webview, extensionUri, "media", "rautomodWebview.css");
@@ -48,7 +50,7 @@ function getHtmlDocument(
     </style>
     <link rel="stylesheet" href="${styleUri}" />
 </head>
-<body data-webview-kind="${kind}">
+<body data-webview-kind="${kind}" data-manager-surface="${kind === "manager" ? managerSurface : ""}">
     <div id="root"></div>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

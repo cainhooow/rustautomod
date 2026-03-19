@@ -1,5 +1,10 @@
 import * as assert from "assert";
-import { addModDeclarations, removeModDeclarations, sortModDeclarationsInContent } from "../automod/modContentEditor";
+import {
+    addModDeclarations,
+    removeModDeclarations,
+    sortModDeclarationsInContent,
+    updateModuleVisibility
+} from "../automod/modContentEditor";
 
 suite("modContentEditor", () => {
     test("adds a module after use statements", () => {
@@ -61,6 +66,23 @@ pub mod alpha;`;
             updated,
             `pub mod alpha;
 pub mod zebra;`
+        );
+    });
+
+    test("updates module visibility without dropping cfg attributes", () => {
+        const content = `#[cfg(feature = "queries")]
+pub mod queries;
+mod internal;
+`;
+
+        const updated = updateModuleVisibility(content, "queries", "pub(crate)");
+
+        assert.strictEqual(
+            updated,
+            `#[cfg(feature = "queries")]
+pub(crate) mod queries;
+mod internal;
+`
         );
     });
 });
