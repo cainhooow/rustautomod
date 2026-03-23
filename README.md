@@ -6,11 +6,15 @@ Art produced by [Saki](https://instagram.com/sak1_sk)
 
 Rust Automod is a Visual Studio Code extension that keeps Rust module files in sync for you. It creates and updates `mod.rs`, `lib.rs`, and `main.rs` module declarations automatically, supports both the classic `folder/mod.rs` layout and the modern `folder.rs + folder/` layout, supports richer `.rautomod` project rules, adds syntax highlighting and formatting for `.rautomod`, and now includes smart `mod.rs` visibility controls plus preview, undo, regenerate, explain, module-tree, and Studio-style config workflows inside VS Code.
 
+This repository now also includes a Zed adaptation under [zed/README.md](zed/README.md), focused on `.rautomod` workflows that fit Zed's current extension surface. The current Zed package gives `.rautomod` files real editor support in Zed with diagnostics, formatting, hover help, and completions, adds Rust code actions for module registration and sync, includes Assistant slash commands for scaffold, audit, explain, and module-pair creation, and now ships a Rust daemon watcher that can automatically update closed Rust module targets after file create, delete, and rename events. When a target is open in the editor, the daemon intentionally defers the write and leaves the fix available as a code action instead of risking buffer/undo conflicts. The sync path now also preserves existing declaration style in targets that are already private/public instead of promoting everything to `pub mod`, no longer creates broad missing `mod.rs` targets during generic rescans or startup noise, only manages files that are actually covered by a real `.rautomod` in the current subtree, trims trailing whitespace plus collapses stale blank-line runs when it rewrites a managed target, now mirrors the VS Code extension more closely when deciding whether declarations should land before or after `use` blocks, and keeps Rust build outputs under `zed/` out of Git through a local `.gitignore`.
+
 ## Documentation
 
 - For practical scenarios and copy-paste examples, see [docs/USE_CASES.md](docs/USE_CASES.md).
 - For a more detailed `.rautomod` reference, see [docs/RAUTOMOD_REFERENCE.md](docs/RAUTOMOD_REFERENCE.md).
 - For the visual editor and manager UI flows, see [docs/RAUTOMOD_STUDIO.md](docs/RAUTOMOD_STUDIO.md).
+- For the Zed adaptation and its current feature matrix, see [zed/README.md](zed/README.md).
+- For the Zed code-action and watcher setup on Rust files, see the install and settings section in [zed/README.md](zed/README.md).
 
 ## What it does
 

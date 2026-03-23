@@ -2,6 +2,159 @@
 
 ## [Released]
 
+### 1.9.6
+
+This release adds a small repository-safety improvement for the Zed package.
+
+#### Added
+
+- Added `zed/.gitignore` so Cargo `target/` build output under `zed/` stays out of accidental `git add *` commits.
+
+### 1.9.5
+
+This release brings the Zed daemon target rewriter closer to the VS Code extension's declaration-placement behavior.
+
+#### Fixed
+
+- Managed `mod` and `pub mod` declarations in the Zed daemon now honor `use` blocks more like the VS Code extension, instead of drifting above imports in some targets.
+- Multiline Rust `use { ... }` groups are now detected as a single import block when choosing where managed declarations should be inserted.
+- The Zed daemon now respects `.rautomod` `group_order` when deciding whether managed declarations belong before or after the `use` block.
+
+### 1.9.4
+
+This release cleans up whitespace handling in Zed daemon rewrites so managed targets stop accumulating awkward spacing.
+
+#### Fixed
+
+- Reused declaration blocks in managed `mod.rs`, `lib.rs`, `main.rs`, and modern folder targets no longer pull leading blank lines into the rewritten output.
+- Target rewrites now trim trailing whitespace and collapse stale blank-line runs more predictably, which keeps generated module files tighter after repeated sync passes.
+- Managed declaration blocks now preserve a clean separation from the following code without injecting extra blank gaps inside the declaration list.
+
+### 1.9.3
+
+This release tightens the Zed daemon scope so automatic module management only happens where a real `.rautomod` actually applies.
+
+#### Fixed
+
+- The Zed daemon no longer manages `mod.rs`, `lib.rs`, or `main.rs` outside the subtree covered by an existing `.rautomod`.
+- Automatic sync now stops climbing at the first ancestor target that is outside the active `.rautomod` scope, which prevents edits in broader crate files like `src/main.rs` when only a nested subtree is configured.
+
+#### Changed
+
+- In the Zed package, the automatic watcher and Rust code actions now treat a real `.rautomod` as the opt-in scope boundary for module management.
+
+### 1.9.2
+
+This release makes the Zed daemon more conservative about creating missing module targets.
+
+#### Fixed
+
+- Generic rescans and startup watcher noise no longer create broad missing `mod.rs` files in unrelated folders.
+- The Zed daemon now limits automatic target creation to the direct target implied by a real Rust file create or rename event.
+
+#### Changed
+
+- Upstream watcher reconciliation now walks only through already-existing ancestor targets after the first missing direct target, which avoids unintended cascades of new `mod.rs` files.
+
+### 1.9.1
+
+This release hardens the new Zed daemon sync path so it behaves much closer to existing Rust projects instead of aggressively normalizing declaration blocks.
+
+#### Fixed
+
+- The Zed daemon now preserves existing private/public module declarations in already-managed targets instead of promoting older `mod foo;` lines to `pub mod foo;` during unrelated syncs.
+- Automatic sync for nested module targets now correctly appends new entries like `entities/user.rs` into the local `entities/mod.rs` while keeping ancestor targets stable.
+- Repeated `// rustautomod` marker lines are now deduplicated during daemon rewrites instead of piling up across sync passes.
+
+#### Changed
+
+- When there is no explicit `.rautomod` visibility rule, the Zed daemon now infers the local declaration style from the target file before generating new missing module entries.
+
+### 1.9.0
+
+This release upgrades the Zed adaptation from mostly manual helpers into a safer daemon-backed workflow for Rust module synchronization.
+
+#### Added
+
+- A bundled Rust daemon under `zed/daemon/` that speaks JSON-RPC over stdio and powers the Zed Rust actions server.
+- Automatic watcher-driven sync in Zed for closed Rust module targets after file create, delete, and rename events.
+- Debounced module-target reconciliation in the Zed daemon, with self-authored event suppression to avoid cascades and auto-edit loops.
+- Safety guards so the Zed daemon skips automatic writes when the target file is currently open in the editor, leaving the fix available as a code action instead.
+- A `rustautomod/syncNow` JSON-RPC entry point in the daemon for future explicit/manual sync triggers.
+
+#### Changed
+
+- The Zed Rust actions server no longer launches a Node script from the worktree cwd; it now runs through the bundled Rust daemon.
+- The Zed package now resolves its remaining Node-based entrypoints by absolute extension path, fixing real-world startup failures caused by cwd-dependent script resolution.
+- The Zed documentation now explains the new daemon requirements, watcher behavior, and the open-file safety model.
+
+#### Fixed
+
+- Fixed `MODULE_NOT_FOUND` startup failures in Zed where the Rust actions server tried to resolve `scripts/rautomod_zed_rust_language_server.js` from the user worktree instead of the extension package.
+- Fixed the gap where the Zed package could format `.rautomod` and offer code actions but still failed to mirror the VS Code-style automatic module sync for closed files.
+
+### 1.8.4
+
+This release fixes the Zed package startup on Windows by avoiding oversized `node -e` spawns for the bundled language servers and slash-command bridge.
+
+#### Fixed
+
+- The Zed Rust code-action server now launches through bundled script entry files instead of giant inline `node -e` payloads, avoiding Windows error `206` during process spawn.
+- The `.rautomod` language server and slash-command bridge in the Zed package now use the same shorter startup path for better cross-platform reliability.
+
+### 1.8.3
+
+This release makes the Zed adaptation more useful for day-to-day Rust editing by adding Rust code actions for module registration and module-target sync.
+
+#### Added
+
+- A second Zed language server for `Rust` that surfaces Rust AutoMod code actions directly inside `.rs` files.
+- Rust-side code actions to register the current module in its parent target and sync missing child declarations in `mod.rs`, `lib.rs`, `main.rs`, and modern `folder.rs` targets.
+- Automatic diagnostics in Zed Rust files when a module is not registered in the parent or when a target is missing child declarations.
+
+#### Changed
+
+- The Zed package was split into smaller bridge files so `.rautomod` parsing and Rust module actions are easier to maintain separately.
+- The Zed documentation now explains the extra `languages.Rust.language_servers` setting needed to enable Rust AutoMod actions alongside the default Rust language server stack.
+
+### 1.8.2
+
+This release makes the early Zed adaptation visibly useful inside the editor instead of relying only on Assistant slash commands.
+
+#### Added
+
+- A bundled `.rautomod` language server for Zed with in-editor diagnostics, hover help, completions, and document formatting.
+- A new `/rautomod-help` slash command for quickly verifying what the Zed package exposes.
+
+#### Changed
+
+- The Zed package description and documentation now explain the editor-facing `.rautomod` support more clearly.
+- The Zed adaptation now behaves like a language-support package first, with Assistant slash commands as the secondary workflow.
+
+### 1.8.1
+
+This release clarifies the first Zed workflow and improves `.rautomod` matching for the Zed language package.
+
+#### Changed
+
+- The Zed documentation now makes it explicit that the current adaptation is driven by Assistant slash commands instead of a Studio-style panel.
+- The Zed `.rautomod` language matcher now accepts both `rautomod` and `.rautomod` suffix forms to make file detection more reliable.
+
+### 1.8.0
+
+This release adds an initial Zed adaptation in `zed/`, giving the project a second editor target alongside the VS Code extension.
+
+#### Added
+
+- A standalone `zed/` extension package with its own `extension.toml`, `Cargo.toml`, license, and install documentation.
+- Slash commands for Zed covering `.rautomod` scaffold, format, audit, explain, and module-pair creation workflows.
+- A local Node bridge for the Zed package that handles `.rautomod` parsing, formatting, config resolution, and basic module-pair file updates.
+- Best-effort `.rautomod` language registration for Zed with comments, brackets, and lightweight highlighting.
+
+#### Notes
+
+- The Zed package is intentionally focused on manual workflows and `.rautomod` support. The Studio UI, manager surface, Explorer actions, and file-watcher automation still remain VS Code-only because Zed does not currently expose equivalent extension surfaces.
+
 ### 1.7.4
 
 This release makes the Studio manager tree update in place instead of re-rendering the full manager surface.
