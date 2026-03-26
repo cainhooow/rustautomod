@@ -284,9 +284,7 @@ pub fn discover_sync_targets_under_dir(root_dir: &Path) -> Vec<PathBuf> {
         }
 
         if !collect_child_module_entries(&dir_path, None).is_empty() {
-            if let Some(existing_target) = find_existing_registration_target(&dir_path) {
-                targets.insert(existing_target);
-            }
+            targets.insert(resolve_registration_target(&dir_path));
         }
     }
 

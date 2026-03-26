@@ -2,6 +2,16 @@
 
 ## [Released]
 
+### 1.9.7
+
+This release closes two important gaps: Zed watcher parity for missing targets and Studio typing stability in the VS Code UI.
+
+#### Fixed
+
+- The Zed daemon now discovers missing direct and parent registration targets during watcher and manual sync flows, so nested Rust files are more likely to create/register the intermediate `mod.rs` targets that the VS Code extension already handled.
+- Full subtree discovery in the Zed package no longer depends only on already-existing registration files, which means sync passes can now plan missing targets instead of silently skipping whole branches.
+- The VS Code Studio editor no longer keeps rebuilding the full DOM while you are actively typing in many form fields, which prevents focus loss and the "page keeps refreshing while I type" behavior.
+
 ### 1.9.6
 
 This release adds a small repository-safety improvement for the Zed package.

@@ -152,7 +152,7 @@ fn handle_request(context: &DaemonContext, message: &Value, method: &str) -> Res
                     },
                     "serverInfo": {
                         "name": "Rust AutoMod Rust Actions Daemon",
-                        "version": "0.4.6"
+                        "version": "0.4.7"
                     }
                 }),
             )?;
@@ -528,12 +528,12 @@ fn collect_targets_for_manual_sync(context: &DaemonContext, requested_path: &Pat
     }
 
     if requested_path.extension().and_then(|value| value.to_str()) == Some("rs") {
-        if is_registration_target_file(&requested_path) {
-            targets.insert(requested_path.clone());
-        }
-        if let Some(parent_target) = resolve_parent_registration_target(&requested_path) {
-            targets.insert(parent_target);
-        }
+        targets.extend(collect_sync_targets_for_rust_path(
+            &requested_path,
+            WatchIntent {
+                allow_missing_target: true,
+            },
+        ));
     }
 
     targets.into_iter().collect()
@@ -694,17 +694,7 @@ fn collect_targets_for_watcher(
         }
 
         if path.extension().and_then(|value| value.to_str()) == Some("rs") {
-            if path.exists() && is_registration_target_file(path) {
-                if let Some(parent_target) = resolve_parent_registration_target(path) {
-                    targets.insert(parent_target);
-                }
-            } else if intent.allow_missing_target {
-                if let Some(parent_target) = resolve_parent_registration_target(path) {
-                    targets.insert(parent_target);
-                }
-            } else if let Some(parent_target) = resolve_existing_parent_registration_target(path) {
-                targets.insert(parent_target);
-            }
+            targets.extend(collect_sync_targets_for_rust_path(path, *intent));
             continue;
         }
 
@@ -718,6 +708,53 @@ fn collect_targets_for_watcher(
     }
 
     targets.into_iter().collect()
+}
+
+fn collect_sync_targets_for_rust_path(path: &Path, intent: WatchIntent) -> BTreeSet<PathBuf> {
+    let mut targets = BTreeSet::new();
+    let mut anchor_target = None;
+
+    if path.exists() && is_registration_target_file(path) {
+        let normalized_target = normalize_path_buf(path);
+        targets.insert(normalized_target.clone());
+        anchor_target = Some(normalized_target);
+    } else {
+        let direct_target = if intent.allow_missing_target {
+            resolve_parent_registration_target(path)
+        } else {
+            resolve_existing_parent_registration_target(path)
+        };
+
+        if let Some(direct_target) = direct_target {
+            let normalized_target = normalize_path_buf(&direct_target);
+            targets.insert(normalized_target.clone());
+            anchor_target = Some(normalized_target);
+        }
+    }
+
+    let Some(anchor_target) = anchor_target else {
+        return targets;
+    };
+
+    let anchor_name = anchor_target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if matches!(anchor_name, "lib.rs" | "main.rs") {
+        return targets;
+    }
+
+    let parent_target = if intent.allow_missing_target {
+        resolve_parent_registration_target(&anchor_target)
+    } else {
+        resolve_existing_parent_registration_target(&anchor_target)
+    };
+
+    if let Some(parent_target) = parent_target {
+        targets.insert(normalize_path_buf(&parent_target));
+    }
+
+    targets
 }
 
 fn should_allow_missing_target_for_event(kind: &EventKind, path: &Path) -> bool {
@@ -1021,4 +1058,67 @@ fn file_uri_from_path(file_path: &Path) -> Result<String> {
 
 fn path_is_in_automod_scope(path: &Path) -> bool {
     nearest_config_path(path).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("rustautomod-zed-{label}-{nonce}"))
+    }
+
+    fn write_file(file_path: &Path, content: &str) {
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent).expect("create parent directory");
+        }
+        fs::write(file_path, content).expect("write file");
+    }
+
+    #[test]
+    fn collect_sync_targets_for_new_file_includes_direct_and_parent_targets() {
+        let root_dir = unique_temp_dir("watch-targets");
+        let source_path = root_dir
+            .join("src")
+            .join("infrastructure")
+            .join("entities")
+            .join("user.rs");
+
+        fs::create_dir_all(root_dir.join("src").join("infrastructure").join("entities"))
+            .expect("create source directories");
+        write_file(
+            &root_dir
+                .join("src")
+                .join("infrastructure")
+                .join(".rautomod"),
+            "visibility=private\n",
+        );
+        write_file(&source_path, "");
+
+        let targets = collect_sync_targets_for_rust_path(
+            &source_path,
+            WatchIntent {
+                allow_missing_target: true,
+            },
+        );
+
+        assert!(targets.contains(&normalize_path_buf(
+            &root_dir
+                .join("src")
+                .join("infrastructure")
+                .join("entities")
+                .join("mod.rs")
+        )));
+        assert!(targets.contains(&normalize_path_buf(
+            &root_dir.join("src").join("infrastructure").join("mod.rs")
+        )));
+
+        let _ = fs::remove_dir_all(root_dir);
+    }
 }

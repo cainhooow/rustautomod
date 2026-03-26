@@ -24,6 +24,7 @@
     let acceptIncomingState = false;
     let renderTimer = null;
     let insightsTimer = null;
+    let pendingRenderWhileEditing = false;
 
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
@@ -379,7 +380,35 @@
         }
     }
 
-    function scheduleRender() {
+    function hasFocusedEditableField() {
+        const activeElement = document.activeElement;
+        if (!activeElement || !root.contains(activeElement)) {
+            return false;
+        }
+
+        if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLSelectElement)) {
+            return false;
+        }
+
+        const role = activeElement.getAttribute("data-role");
+        return role !== "playground-input" && role !== "chip-input";
+    }
+
+    function flushPendingRender() {
+        if (!pendingRenderWhileEditing) {
+            return;
+        }
+
+        pendingRenderWhileEditing = false;
+        scheduleRender(true);
+    }
+
+    function scheduleRender(force) {
+        if (!force && hasFocusedEditableField()) {
+            pendingRenderWhileEditing = true;
+            return;
+        }
+
         if (renderTimer) {
             return;
         }
@@ -413,7 +442,7 @@
         insights = insights || createEmptyInsights();
         acceptIncomingState = false;
         persistUiState();
-        scheduleRender();
+        scheduleRender(true);
         requestInsightsRefresh();
     }
 
@@ -430,7 +459,7 @@
         mode = nextMode;
         persistUiState();
         requestInsightsRefresh();
-        scheduleRender();
+        scheduleRender(true);
     }
 
     function setOpenSection(sectionId, isOpen) {
@@ -1600,6 +1629,12 @@
         if (target instanceof HTMLInputElement && target.getAttribute("data-role") === "chip-input" && target.value.trim()) {
             commitChipInput(target);
         }
+
+        setTimeout(() => {
+            if (!hasFocusedEditableField()) {
+                flushPendingRender();
+            }
+        }, 0);
     });
 
     root.addEventListener("dragstart", event => {

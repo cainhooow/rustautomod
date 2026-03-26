@@ -31,6 +31,7 @@ Important: this Zed version still does not open a Studio panel or sidebar after 
   - preserves the visibility/cfg style of existing declarations in already-managed targets, only adding or removing what changed
   - trims trailing whitespace and collapses stale blank-line runs when rewriting an already-managed target
   - mirrors the VS Code extension more closely for declaration placement around `use` blocks, including multiline `use { ... }` groups and `group_order` handling
+  - now discovers missing direct and parent targets during watcher/manual sync passes, which helps nested modules get registered even when the intermediate `mod.rs` files do not exist yet
   - skips files that are currently open in the editor, so it does not fight buffer state or undo history
   - suppresses its own file-system echoes to avoid cascading loops
 - Slash commands for the core manual workflows that fit Zed's current extension surfaces:

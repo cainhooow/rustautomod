@@ -3,7 +3,7 @@
   "displayName": "Rust AutoMod",
   "icon": "assets/automodlogo.png",
   "description": "Automate Rust modules across mod.rs, lib.rs, main.rs, and modern folder.rs layouts with .rautomod Studio, smart mod visibility/hiding, preview and undo workflows, regeneration tools, effective-config tooling, a visual module tree in VS Code, and a companion Zed package with .rautomod editor support, Rust code actions, and a Rust daemon watcher that safely syncs closed module targets.",
-  "version": "1.9.6",
+  "version": "1.9.7",
   "author": "Cainhooow - Caio Augusto",
   "publisher": "drkryz",
   "engines": {

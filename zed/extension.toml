@@ -1,6 +1,6 @@
 id = "rust-automod"
 name = "Rust AutoMod"
-version = "0.4.6"
+version = "0.4.7"
 schema_version = 1
 description = "Rust AutoMod for Zed, with .rautomod editor support, diagnostics, formatting, completions, hover help, Rust code actions for module registration, a Rust daemon watcher for safe module-target sync, and slash commands for scaffold, audit, explain, and module-pair creation."
 repository = "https://github.com/cainhooow/rustautomod"
